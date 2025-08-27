@@ -2,7 +2,7 @@
 
 Core FastAPI standalone per autenticazione (via token esterni), crediti e proxy AI.
 
-[Guida completa: Setup Supabase passo-passo](docs/core/setup_supabase.md)
+[Guida completa: Setup Supabase passo-passo](docs/core/setup_supabase.md) · [Guida OpenRouter](docs/core/openrouter_setup.md)
 
 ## Avvio locale
 
