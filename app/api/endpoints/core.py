@@ -54,8 +54,7 @@ async def get_balance(Authorization: Optional[str] = Header(default=None)) -> Di
 @router.post("/providers/openrouter/chat", response_model=ChatResponse)
 async def openrouter_chat(
     payload: ChatRequest,
-    Authorization: Optional[str] = Header(default=None),
-    **_: Dict[str, Any]
+    Authorization: Optional[str] = Header(default=None)
 ) -> ChatResponse:
     """Proxy chat verso OpenRouter con addebito crediti (stub).
 
