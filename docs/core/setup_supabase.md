@@ -6,12 +6,17 @@ Questa guida crea un progetto Supabase da zero e prepara lo schema richiesto dal
 - Vai su `https://supabase.com` → Sign in → New project
 - Scegli Region, imposta una Database Password (conservala) e attendi il provisioning
 
-## 2) Recupera le credenziali
-- Project Settings → API
-  - Project URL → usa come `SUPABASE_URL`
-  - service_role → usa come `SUPABASE_SERVICE_KEY` (server-side)
-- Dalla barra URL della dashboard recupera il project ref `<REF>`
-  - `SUPABASE_JWKS_URL` = `https://<REF>.supabase.co/auth/v1/jwks`
+## 2) Recupera le credenziali (nuova UI Supabase)
+- Project ID (REF): Settings → General → "Project ID".
+  - Costruisci `SUPABASE_URL` come: `https://<ProjectID>.supabase.co`
+  - Costruisci `SUPABASE_JWKS_URL` come: `https://<ProjectID>.supabase.co/auth/v1/jwks`
+  - Esempio: Project ID `licwmckuwkvzrepyncz` →
+    - `SUPABASE_URL=https://licwmckuwkvzrepyncz.supabase.co`
+    - `SUPABASE_JWKS_URL=https://licwmckuwkvzrepyncz.supabase.co/auth/v1/jwks`
+- service_role (Secret key): Settings → API Keys → TAB "Legacy API Keys" → sezione "Secrets" → tasto "Reveal" → copia il valore di `service_role`.
+  - Usa questo valore come `SUPABASE_SERVICE_KEY` (solo lato server/Core).
+
+Verifica rapida: apri `SUPABASE_JWKS_URL` nel browser, dovresti vedere un JSON con `keys`.
 
 ## 3) Inizializza lo schema con l’SQL Editor
 - Dashboard → SQL → New Query
@@ -30,6 +35,14 @@ Cosa viene creato:
   - `SUPABASE_SERVICE_KEY="<service_role>"`
   - `SUPABASE_JWKS_URL="https://<REF>.supabase.co/auth/v1/jwks"`
   - (Dev) `SUPABASE_VERIFY_DISABLED=1` per saltare la verifica firma
+
+Esempio completo `.env` (dev):
+```
+SUPABASE_URL="https://licwmckuwkvzrepyncz.supabase.co"
+SUPABASE_SERVICE_KEY="eyJhbGciOi...<service_role>..."
+SUPABASE_JWKS_URL="https://licwmckuwkvzrepyncz.supabase.co/auth/v1/jwks"
+SUPABASE_VERIFY_DISABLED=1
+```
 
 ## 5) Avvia in locale
 ```bash
