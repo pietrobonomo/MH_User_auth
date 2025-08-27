@@ -1,6 +1,9 @@
 from fastapi import APIRouter, Header, HTTPException, status
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
+from app.adapters.auth_supabase import SupabaseAuthBackend
+from app.adapters.credits_supabase import SupabaseCreditsLedger
+from app.adapters.provider_openrouter import OpenRouterAdapter
 
 router = APIRouter()
 
@@ -18,6 +21,11 @@ class ChatResponse(BaseModel):
     usage: Dict[str, Any]
     transaction_id: Optional[str] = None
 
+auth_backend = SupabaseAuthBackend()
+credits_ledger = SupabaseCreditsLedger()
+openrouter = OpenRouterAdapter()
+
+
 @router.get("/users/me")
 async def get_me(Authorization: Optional[str] = Header(default=None)) -> Dict[str, Any]:
     """Ritorna informazioni basilari sull'utente autenticato.
@@ -33,9 +41,9 @@ async def get_me(Authorization: Optional[str] = Header(default=None)) -> Dict[st
     """
     if not Authorization:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
-    # Scheletro: parsing minimale del token senza verifica
     token = Authorization.replace("Bearer ", "")
-    return {"id": "unknown", "email": "unknown@example.com", "token_preview": token[:8]}
+    user = await auth_backend.get_current_user(token)
+    return user
 
 @router.get("/credits/balance")
 async def get_balance(Authorization: Optional[str] = Header(default=None)) -> Dict[str, Any]:
@@ -49,7 +57,10 @@ async def get_balance(Authorization: Optional[str] = Header(default=None)) -> Di
     """
     if not Authorization:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
-    return {"credits": 0.0}
+    token = Authorization.replace("Bearer ", "")
+    user = await auth_backend.get_current_user(token)
+    credits = await credits_ledger.get_balance(user["id"])
+    return {"credits": credits}
 
 @router.post("/providers/openrouter/chat", response_model=ChatResponse)
 async def openrouter_chat(
@@ -70,9 +81,9 @@ async def openrouter_chat(
     if not Authorization:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
 
-    fake_text = f"[stub] Risposta del modello {payload.model} a {len(payload.messages)} messaggi"
-    return ChatResponse(
-        response={"choices": [{"message": {"role": "assistant", "content": fake_text}}]},
-        usage={"input_tokens": 0, "output_tokens": 0, "cost_credits": 0.0},
-        transaction_id=None,
-    )
+    token = Authorization.replace("Bearer ", "")
+    user = await auth_backend.get_current_user(token)
+
+    # TODO: integrare pricing + debit real-time. Per ora solo proxy stub
+    response, usage = await openrouter.chat(user_id=user["id"], model=payload.model, messages=[m.model_dump() for m in payload.messages], options=payload.options)
+    return ChatResponse(response=response, usage=usage, transaction_id=None)
