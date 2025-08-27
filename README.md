@@ -16,13 +16,18 @@ python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 5050
 
 - GET `/core/v1/users/me`
 - GET `/core/v1/credits/balance`
+- POST `/core/v1/credits/estimate`
 - POST `/core/v1/providers/openrouter/chat`
 
 ## Variabili d'ambiente
 
 Vedi `.env.example`.
 
+- SUPABASE_URL, SUPABASE_SERVICE_KEY, SUPABASE_JWKS_URL (o SUPABASE_VERIFY_DISABLED=1 in dev)
+- PRICING_DEFAULT_CREDITS_PER_CALL (default: 1.0)
+- PRICING_MODEL_MAP_JSON (es: {"openrouter/model": 2.0})
+
 ## Note
 
-- Questo è uno scheletro: la verifica JWT Supabase/OpenRouter verrà collegata negli adapter.
-- Commenti in italiano, type hints completi, accesso alle env con `os.environ.get()`.
+- Verifica JWT via JWKS (se configurato) altrimenti decodifica senza verifica (solo dev).
+- Ledger crediti minimo via REST (profiles.credits e RPC debit_user_credits).
