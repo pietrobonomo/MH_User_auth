@@ -65,7 +65,8 @@ async def get_balance(Authorization: Optional[str] = Header(default=None)) -> Di
 @router.post("/providers/openrouter/chat", response_model=ChatResponse)
 async def openrouter_chat(
     payload: ChatRequest,
-    Authorization: Optional[str] = Header(default=None)
+    Authorization: Optional[str] = Header(default=None),
+    Idempotency_Key: Optional[str] = Header(default=None, alias="Idempotency-Key")
 ) -> ChatResponse:
     """Proxy chat verso OpenRouter con addebito crediti (stub).
 
@@ -84,6 +85,9 @@ async def openrouter_chat(
     token = Authorization.replace("Bearer ", "")
     user = await auth_backend.get_current_user(token)
 
-    # TODO: integrare pricing + debit real-time. Per ora solo proxy stub
+    # TODO: integrare pricing + stima costi
+    # Addebito minimo simbolico (es. 0) come wiring, poi proxy
+    debit_res = await credits_ledger.debit(user_id=user["id"], amount=0.0, reason="openrouter_chat", idempotency_key=Idempotency_Key)
     response, usage = await openrouter.chat(user_id=user["id"], model=payload.model, messages=[m.model_dump() for m in payload.messages], options=payload.options)
-    return ChatResponse(response=response, usage=usage, transaction_id=None)
+    txn_id = debit_res.get("transaction_id") if isinstance(debit_res, dict) else None
+    return ChatResponse(response=response, usage=usage, transaction_id=txn_id)
