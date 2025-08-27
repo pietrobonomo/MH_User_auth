@@ -27,22 +27,15 @@ Vedi `.env.example`.
 - PRICING_DEFAULT_CREDITS_PER_CALL (default: 1.0)
 - PRICING_MODEL_MAP_JSON (es: {"openrouter/model": 2.0})
 
-## Bootstrap Supabase (nuovo progetto di test)
+## Bootstrap Supabase (via SQL Editor)
 
-1. Crea un progetto Supabase e prendi la `SUPABASE_DB_URL` (connessione Postgres) dalla dashboard.
-2. Imposta l'env locale:
-   - `SUPABASE_DB_URL=postgresql://...` (solo per lo script di bootstrap)
-3. Installa dipendenze: `pip install -r flow_starter/requirements.txt`
-4. Applica schema core:
-```bash
-python -m flow_starter.scripts.apply_sql
-```
-Questo crea:
-- `public.profiles` (con colonna `credits`)
-- `public.credit_transactions`
-- funzione `public.debit_user_credits(p_user_id, p_amount, p_reason)`
-
-Configura poi nel `.env` del Core: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SUPABASE_JWKS_URL`.
+1. Supabase Dashboard → SQL → New Query.
+2. Incolla il contenuto di `flow_starter/sql/001_core_schema.sql`.
+3. Esegui (Run). Verranno creati:
+   - `public.profiles` (con colonna `credits`)
+   - `public.credit_transactions`
+   - funzione `public.debit_user_credits(p_user_id, p_amount, p_reason)`
+4. Imposta nel `.env` del Core: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SUPABASE_JWKS_URL`.
 
 ## Note
 
