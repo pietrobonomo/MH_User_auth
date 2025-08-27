@@ -2,6 +2,8 @@
 
 Core FastAPI standalone per autenticazione (via token esterni), crediti e proxy AI.
 
+[Guida completa: Setup Supabase passo-passo](docs/core/setup_supabase.md)
+
 ## Avvio locale
 
 ```bash
@@ -23,19 +25,16 @@ python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 5050
 
 Vedi `.env.example`.
 
-- SUPABASE_URL, SUPABASE_SERVICE_KEY, SUPABASE_JWKS_URL (o SUPABASE_VERIFY_DISABLED=1 in dev)
-- PRICING_DEFAULT_CREDITS_PER_CALL (default: 1.0)
-- PRICING_MODEL_MAP_JSON (es: {"openrouter/model": 2.0})
+- Supabase: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SUPABASE_JWKS_URL` (o `SUPABASE_VERIFY_DISABLED=1` in dev)
+- Pricing: `PRICING_DEFAULT_CREDITS_PER_CALL` (default: 1.0), `PRICING_MODEL_MAP_JSON`
+- OpenRouter: `OPENROUTER_BASE_URL` (default `https://openrouter.ai/api/v1`), `OPENROUTER_PROVISIONING_KEY`
 
 ## Bootstrap Supabase (via SQL Editor)
 
-1. Supabase Dashboard → SQL → New Query.
-2. Incolla il contenuto di `flow_starter/sql/001_core_schema.sql`.
-3. Esegui (Run). Verranno creati:
-   - `public.profiles` (con colonna `credits`)
-   - `public.credit_transactions`
-   - funzione `public.debit_user_credits(p_user_id, p_amount, p_reason)`
-4. Imposta nel `.env` del Core: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SUPABASE_JWKS_URL`.
+1. Supabase Dashboard → Settings → SQL → New Query
+2. Incolla `flow_starter/sql/001_core_schema.sql`
+3. Esegui (Run): crea `profiles`, `credit_transactions` e funzione `debit_user_credits`
+4. Configura `.env` con `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SUPABASE_JWKS_URL`
 
 ## Note
 
