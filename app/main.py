@@ -2,8 +2,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict
 import os
+from dotenv import load_dotenv
 
 from app.api.router import api_router
+
+# Carica variabili da .env se presente
+load_dotenv()
 
 app = FastAPI(
     title="Flow Starter Core API",
