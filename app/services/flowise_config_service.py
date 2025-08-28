@@ -103,9 +103,26 @@ class FlowiseConfigService:
                 return None
             row = data[0]
             nodes = row.get("node_names")
+            parsed_nodes: List[str] = []
+            if isinstance(nodes, list):
+                parsed_nodes = [str(n) for n in nodes]
+            elif isinstance(nodes, str):
+                try:
+                    j = json.loads(nodes)
+                    if isinstance(j, list):
+                        parsed_nodes = [str(n) for n in j]
+                except Exception:
+                    parsed_nodes = []
+            # dedup preservando ordine
+            seen = set()
+            dedup_nodes = []
+            for n in parsed_nodes:
+                if n not in seen:
+                    seen.add(n)
+                    dedup_nodes.append(n)
             return {
                 "flow_id": row.get("flow_id"),
-                "node_names": nodes if isinstance(nodes, list) else [],
+                "node_names": dedup_nodes,
             }
 
 

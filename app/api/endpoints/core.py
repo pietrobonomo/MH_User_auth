@@ -128,17 +128,23 @@ async def flowise_execute(
     token = Authorization.replace("Bearer ", "")
     user = await auth_backend.get_current_user(token)
 
-    # Determina flow_id
+    # Determina flow_id: se non fornito ma c'è flow_key, risolvi da Supabase; altrimenti usa quello passato
     flow_id = payload.flow_id
     if not flow_id and payload.flow_key:
         from app.services.flowise_config_service import FlowiseConfigService
         cfg = await FlowiseConfigService().get_config_for_user(user["id"], payload.flow_key, app_id=X_App_Id)
-        flow_id = cfg.get("flow_id") if cfg else None
+        if not cfg:
+            raise HTTPException(status_code=404, detail=f"flow_config non trovata per app_id={X_App_Id or ''} flow_key={payload.flow_key}")
+        flow_id = cfg.get("flow_id")
         # Se node_names non passati, prova da config
-        if not payload.node_names and cfg and isinstance(cfg.get("node_names"), list):
+        if not payload.node_names and isinstance(cfg.get("node_names"), list):
             payload.node_names = [str(n) for n in cfg["node_names"]]
     if not flow_id:
         raise HTTPException(status_code=400, detail="flow_id o flow_key obbligatorio")
+
+    # Rifiuta placeholder non valido
+    if isinstance(flow_id, str) and flow_id.strip().lower() == "demo-flow":
+        raise HTTPException(status_code=400, detail="flow_id 'demo-flow' non valido")
 
     # Stima e addebito
     est = pricing.estimate_credits("flowise_execute", {"flow_id": flow_id})

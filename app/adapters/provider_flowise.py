@@ -8,8 +8,10 @@ Adapter per Flowise/NL-Flow (minimo funzionante via HTTP).
 - In assenza di chiave o base_url, ritorna stub per sviluppo.
 """
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, List
 import os
+import json
+import logging
 import httpx
 from app.services.openrouter_user_keys import OpenRouterUserKeysService
 
@@ -21,40 +23,41 @@ class FlowiseAdapter:
         base_url = os.environ.get("FLOWISE_BASE_URL")
         api_key = os.environ.get("FLOWISE_API_KEY")
         if not base_url or not api_key:
-            # Stub con override utente: prova a recuperare key_name reale se presente
-            key_name_resolved: Optional[str] = None
-            try:
-                key_service = OpenRouterUserKeysService()
-                key_name_resolved = await key_service.get_user_key_name(user_id)
-            except Exception:
-                key_name_resolved = None
-            enriched = _inject_openrouter_identity(data, user_id, key_name=key_name_resolved or "stub_key")
-            return ({"text": f"[stub] Flowise eseguito: {flow_id}", "data": enriched}, {"cost_credits": None})
+            return ({"text": f"[stub] Flowise eseguito: {flow_id}", "data": data}, {"cost_credits": None})
 
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
-        # Inietta identità utente e key_name OpenRouter nel payload
+        
+        # Ottieni chiave utente e nodi
         key_service = OpenRouterUserKeysService()
-        key_name = await key_service.get_user_key_name(user_id)
         user_api_key = await key_service.get_user_api_key(user_id)
+        
+        # Fallback a variabile d'ambiente per test (come InsightDesk)
+        if not user_api_key:
+            user_api_key = os.environ.get("FALLBACK_OPENROUTER_KEY") or os.environ.get("OPENROUTER_API_KEY")
 
-        # Inietta identità e chiave reale nei nodi richiesti a runtime
-        enriched = _inject_openrouter_identity(data, user_id, key_name)
+        # Estrai node_names dal payload
         node_list = []
         if isinstance(data, dict):
             nl = data.pop("_node_names", None)
             if isinstance(nl, list):
                 node_list = [str(n) for n in nl if isinstance(n, (str, int))]
+        
+        # Applica enhancement semplice come InsightDesk
+        enriched = _inject_openrouter_identity(data, user_id, await key_service.get_user_key_name(user_id))
+        
+        # Inietta chiavi OpenRouter nei nodi AgentV2 se necessario
         if node_list and user_api_key:
-            node_map = {node: user_api_key for node in node_list}
-            enriched = _inject_openrouter_node_keys(enriched, node_map)
-
+            enriched = _inject_agent_v2_keys_simple(enriched, node_list, user_api_key)
+        
         url = f"{base_url.rstrip('/')}/{flow_id}"
+        
         async with httpx.AsyncClient(timeout=120) as client:
             resp = await client.post(url, headers=headers, json=enriched)
             if resp.status_code >= 400:
+                logging.error(f"❌ Flowise error {resp.status_code}: {resp.text}")
                 raise RuntimeError(f"Flowise error {resp.status_code}: {resp.text}")
             result = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {"text": resp.text}
         return result, {"cost_credits": None}
@@ -101,5 +104,40 @@ def _inject_openrouter_node_keys(payload: Dict[str, Any], node_to_key: Dict[str,
     merged_map = {**(existing_map if isinstance(existing_map, dict) else {}), **node_to_key}
     new_override = {**(oc if isinstance(oc, dict) else {}), "openRouterApiKey": merged_map}
     return {**payload, "overrideConfig": new_override}
+
+
+def _inject_agent_v2_keys_simple(payload: Dict[str, Any], node_list: List[str], user_api_key: str) -> Dict[str, Any]:
+    """
+    Inietta chiavi OpenRouter nei nodi AgentV2 usando la struttura semplice di InsightDesk.
+    """
+    enriched = payload.copy()
+    
+    if "overrideConfig" not in enriched:
+        enriched["overrideConfig"] = {}
+    
+    override_config = enriched["overrideConfig"]
+    
+    # Inietta chiavi nei nodi AgentV2 come InsightDesk
+    for node_name in node_list:
+        if node_name.startswith("llmAgent"):
+            section = "llmModelConfig"
+        elif node_name.startswith("agentAgent"):
+            section = "agentModelConfig"
+        elif node_name.startswith("conditionAgent"):
+            section = "conditionAgentModelConfig"
+        else:
+            continue  # Skip nodi non riconosciuti
+            
+        # Crea sezione se non esiste
+        if section not in override_config:
+            override_config[section] = {}
+            
+        # Inietta chiave per nodo (openRouterApiKey come InsightDesk)
+        override_config[section][node_name] = {
+            "openRouterApiKey": user_api_key
+        }
+    
+    logging.info(f"🚀 Chiavi OpenRouter iniettate in {len(node_list)} nodi AgentV2")
+    return enriched
 
 

@@ -44,21 +44,77 @@ async def get_flow_config(
     if not supabase_url or not service_key:
         raise HTTPException(status_code=500, detail="Supabase non configurato")
 
+    # Normalizza input (trim)
+    app_id = app_id.strip()
+    flow_key = flow_key.strip()
+
     headers = {
         "apikey": service_key,
         "Authorization": f"Bearer {service_key}",
         "Accept": "application/json",
     }
-    url = f"{supabase_url}/rest/v1/flow_configs?app_id=eq.{app_id}&flow_key=eq.{flow_key}&select=app_id,flow_key,flow_id,node_names"
     async with httpx.AsyncClient(timeout=10) as client:
+        # Primo tentativo: eq (match esatto)
+        url = f"{supabase_url}/rest/v1/flow_configs?app_id=eq.{app_id}&flow_key=eq.{flow_key}&select=app_id,flow_key,flow_id,node_names"
         resp = await client.get(url, headers=headers)
-    if resp.status_code != 200:
-        raise HTTPException(status_code=resp.status_code, detail=resp.text)
-    data = resp.json()
-    if not data:
-        return {"found": False}
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        data = resp.json()
+        # Fallback: ilike (case-insensitive) se vuoto
+        if not data:
+            # Punta prima a ilike exact (senza wildcard), poi con wildcard
+            url_ilike = f"{supabase_url}/rest/v1/flow_configs?app_id=eq.{app_id}&flow_key=ilike.{flow_key}&select=app_id,flow_key,flow_id,node_names"
+            resp2 = await client.get(url_ilike, headers=headers)
+            if resp2.status_code != 200:
+                raise HTTPException(status_code=resp2.status_code, detail=resp2.text)
+            data = resp2.json()
+            if not data:
+                url_ilike2 = f"{supabase_url}/rest/v1/flow_configs?app_id=eq.{app_id}&flow_key=ilike.*{flow_key}*&select=app_id,flow_key,flow_id,node_names"
+                resp3 = await client.get(url_ilike2, headers=headers)
+                if resp3.status_code != 200:
+                    raise HTTPException(status_code=resp3.status_code, detail=resp3.text)
+                data = resp3.json()
+        if not data:
+            return {"found": False}
     row = data[0]
     return {"found": True, "config": row}
+
+
+@router.get("/admin/flow-keys")
+async def list_flow_keys(
+    app_id: str,
+    Authorization: Optional[str] = Header(default=None),
+    X_Admin_Key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
+) -> Dict[str, Any]:
+    # Admin key bypass
+    core_admin_key = os.environ.get("CORE_ADMIN_KEY")
+    if X_Admin_Key and core_admin_key and X_Admin_Key == core_admin_key:
+        pass
+    else:
+        if not Authorization:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
+        token = Authorization.replace("Bearer ", "")
+        _ = await auth_backend.get_current_user(token)
+
+    supabase_url = os.environ.get("SUPABASE_URL")
+    service_key = os.environ.get("SUPABASE_SERVICE_KEY")
+    if not supabase_url or not service_key:
+        raise HTTPException(status_code=500, detail="Supabase non configurato")
+
+    headers = {
+        "apikey": service_key,
+        "Authorization": f"Bearer {service_key}",
+        "Accept": "application/json",
+    }
+    async with httpx.AsyncClient(timeout=10) as client:
+        url = f"{supabase_url}/rest/v1/flow_configs?app_id=eq.{app_id}&select=flow_key"
+        resp = await client.get(url, headers=headers)
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        rows = resp.json()
+    # Deduplica e ordina
+    keys = sorted({r.get("flow_key") for r in rows if isinstance(r, dict) and r.get("flow_key")})
+    return {"app_id": app_id, "flow_keys": keys}
 
 
 @router.post("/admin/flow-configs")
@@ -95,7 +151,8 @@ async def upsert_flow_config(
         "node_names": payload.node_names or [],
     }
     async with httpx.AsyncClient(timeout=10) as client:
-        resp = await client.post(f"{supabase_url}/rest/v1/flow_configs", headers=headers, json=body)
+        # Forza upsert esplicito sul vincolo composto (app_id, flow_key)
+        resp = await client.post(f"{supabase_url}/rest/v1/flow_configs?on_conflict=app_id,flow_key", headers=headers, json=body)
     if resp.status_code not in (200, 201):
         raise HTTPException(status_code=resp.status_code, detail=resp.text)
     return {"status": "ok", "config": resp.json()}

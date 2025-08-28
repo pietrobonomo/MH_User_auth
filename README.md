@@ -41,6 +41,21 @@ Vedi `.env.example`.
 ```
 - Il Core risolve `flow_id` e `node_names` dal DB per quella app; inietta chiavi nei nodi e chiama Flowise.
 
+### Troubleshooting
+
+- Errore `Chatflow demo-flow not found`: significa che stai passando un placeholder `demo-flow` al posto di un vero `flow_id`.
+  - Soluzione rapida: prendi l'ID del chatflow da Flowise e invocalo direttamente con `flow_id`.
+  - Oppure configura una riga in `flow_configs` via Admin API e usa `X-App-Id` + `flow_key`.
+- Come configurare via Admin API (bypass con `X-Admin-Key`):
+  - POST `/core/v1/admin/flow-configs` con body:
+    ```json
+    { "app_id": "my-app", "flow_key": "news_writer", "flow_id": "<FLOW_ID_REALE>", "node_names": ["chatOpenRouter_0"] }
+    ```
+  - Poi invoca:
+    ```json
+    { "flow_key": "news_writer", "data": { "question": "Hello" } }
+    ```
+
 ### Admin API
 - GET `/core/v1/admin/flow-configs?app_id=...&flow_key=...`
 - POST `/core/v1/admin/flow-configs` body:

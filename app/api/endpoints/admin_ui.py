@@ -94,7 +94,8 @@ async def admin_ui() -> str:
 
     <script>
       async function upsertCfg(){
-        const base = document.getElementById('base').value || window.location.origin;
+        const baseRaw = (document.getElementById('base').value || window.location.origin).trim();
+        const base = baseRaw.replace(/\/+$/,'');
         const t = document.getElementById('token').value.trim();
         const adminKey = document.getElementById('admin_key').value.trim();
         const app_id = document.getElementById('app_id').value.trim();
@@ -110,7 +111,8 @@ async def admin_ui() -> str:
         document.getElementById('out').textContent = `STATUS ${resp.status}\n\n${txt}`;
       }
       async function getCfg(){
-        const base = document.getElementById('base').value || window.location.origin;
+        const baseRaw = (document.getElementById('base').value || window.location.origin).trim();
+        const base = baseRaw.replace(/\/+$/,'');
         const t = document.getElementById('token').value.trim();
         const adminKey = document.getElementById('admin_key').value.trim();
         const app_id = document.getElementById('g_app_id').value.trim();

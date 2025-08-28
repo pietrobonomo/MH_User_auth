@@ -37,9 +37,9 @@ async def examples_client() -> str:
     <h1>FlowStarter Example Client</h1>
     <p>Prova le chiamate al Core (Flowise via flow_key). Inserisci token Supabase dell’utente oppure genera un utente/demo end-to-end con un click.</p>
 
-    <h2>1) Crea utente demo + provisioning + config (auto)</h2>
+    <h2>1) Crea utente demo + provisioning (auto)</h2>
     <button onclick=\"autoRun()\">Crea utente demo e configura</button>
-    <small>Questo creerà un utente, farà il provisioning della chiave OpenRouter e salverà una config (app_id=demo-app, flow_key=demo).</small>
+    <small>Questo creerà un utente e farà il provisioning della chiave OpenRouter. Riempirà il Bearer Token. I flow li configuri tu (App ID / Flow Key).</small>
 
     <h2>2) Esegui un flow per flow_key</h2>
 
@@ -56,7 +56,7 @@ async def examples_client() -> str:
     <div class=\"row\">
       <div>
         <label>Flow Key</label>
-        <input id=\"flow_key\" placeholder=\"news_writer\"/>
+        <select id=\"flow_key\"><option value=\"\">-- seleziona --</option></select>
       </div>
       <div>
         <label>Base URL Core</label>
@@ -64,44 +64,74 @@ async def examples_client() -> str:
       </div>
     </div>
 
-    <label>Data (JSON)</label>
-    <textarea id=\"data\" rows=\"6\">{\n  \"question\": \"Hello!\"\n}</textarea>
+    <label>Data (testo o JSON)</label>
+    <textarea id=\"data\" rows=\"6\">Hello!</textarea>
     <button onclick=\"execFlow()\">Esegui flow_key</button>
 
     <h2>Risultato</h2>
     <pre id=\"out\"></pre>
 
     <script>
+      function makeApiBase(){
+        const baseRaw = (document.getElementById('base').value || window.location.origin).trim();
+        const baseNoSlash = baseRaw.replace(/\/+$/,'');
+        return baseNoSlash.endsWith('/core/v1') ? baseNoSlash : baseNoSlash + '/core/v1';
+      }
       async function autoRun(){
-        const base = document.getElementById('base').value || window.location.origin;
-        const resp = await fetch(`${base}/core/v1/examples/e2e-run`,{method:'POST'});
+        const apiBase = makeApiBase();
+        const resp = await fetch(`${apiBase}/examples/e2e-run`,{method:'POST'});
         const txt = await resp.text();
         document.getElementById('out').textContent = `AUTO E2E STATUS ${resp.status}\n\n${txt}`;
         // Prefill valori utili
         try {
           const data = JSON.parse(txt);
-          document.getElementById('app').value = 'demo-app';
-          document.getElementById('flow_key').value = 'demo';
+          if(data.access_token){ document.getElementById('token').value = data.access_token; }
           // Suggersci un payload di esempio
-          document.getElementById('data').value = JSON.stringify({question: 'Hello from example client'}, null, 2);
+          document.getElementById('data').value = 'Hello from example client';
+          await refreshFlowKeys();
         } catch(e){}
       }
+      async function refreshFlowKeys(){
+        const apiBase = makeApiBase();
+        const t = document.getElementById('token').value.trim();
+        const appId = document.getElementById('app').value.trim();
+        const sel = document.getElementById('flow_key');
+        sel.innerHTML = '<option value=\"\">-- seleziona --</option>';
+        if(!appId){ return; }
+        const headers = {};
+        if(t) headers['Authorization'] = `Bearer ${t}`;
+        try{
+          const resp = await fetch(`${apiBase}/admin/flow-keys?app_id=${encodeURIComponent(appId)}`,{ headers });
+          if(!resp.ok){ return; }
+          const data = await resp.json();
+          const keys = Array.isArray(data.flow_keys) ? data.flow_keys : [];
+          for(const k of keys){
+            const opt = document.createElement('option');
+            opt.value = k; opt.textContent = k;
+            sel.appendChild(opt);
+          }
+        }catch(_e){}
+      }
       async function execFlow(){
-        const base = document.getElementById('base').value || window.location.origin;
+        const apiBase = makeApiBase();
         const t = document.getElementById('token').value.trim();
         const appId = document.getElementById('app').value.trim();
         const flow_key = document.getElementById('flow_key').value.trim();
         let data;
-        try { data = JSON.parse(document.getElementById('data').value); }
-        catch(e){ document.getElementById('out').textContent = 'JSON non valido in data'; return; }
+        const raw = document.getElementById('data').value;
+        try { data = JSON.parse(raw); }
+        catch(e){ data = { question: String(raw) }; }
         const headers = {'Content-Type':'application/json','Authorization':`Bearer ${t}`};
         if(appId) headers['X-App-Id'] = appId;
-        const resp = await fetch(`${base}/core/v1/providers/flowise/execute`,{
+        const resp = await fetch(`${apiBase}/providers/flowise/execute`,{
           method:'POST', headers, body: JSON.stringify({flow_key, data})
         });
         const txt = await resp.text();
         document.getElementById('out').textContent = `STATUS ${resp.status}\n\n${txt}`;
       }
+      document.getElementById('app').addEventListener('input', () => { refreshFlowKeys(); });
+      document.getElementById('token').addEventListener('input', () => { refreshFlowKeys(); });
+      document.getElementById('base').addEventListener('input', () => { refreshFlowKeys(); });
     </script>
   </body>
   </html>
@@ -132,7 +162,10 @@ async def _wait_profile(supabase_url: str, service_key: str, user_id: str, attem
 
 @router.post("/examples/e2e-run")
 async def e2e_run() -> Dict[str, Any]:
-    """E2E automatico: crea utente, profilo, provisioning chiave, config flow, esegue Flowise con addebito."""
+    """E2E automatico minimale: crea utente, profilo, provisioning chiave e ritorna un access_token pronto per l'uso.
+
+    Nota: NON configura né esegue flow Flowise. Li gestisci tu da Admin UI.
+    """
     supabase_url = os.environ.get("SUPABASE_URL")
     service_key = os.environ.get("SUPABASE_SERVICE_KEY")
     if not supabase_url or not service_key:
@@ -157,29 +190,21 @@ async def e2e_run() -> Dict[str, Any]:
     prov = OpenRouterProvisioningService()
     prov_res = await prov.create_user_key(user_id, email)
 
-    # 4) Upsert flow_config demo (single-tenant simulato): app_id "demo-app"
-    flow_id = os.environ.get("FLOWISE_TEST_FLOW_ID", "demo-flow")
-    nodes_raw = os.environ.get("FLOWISE_TEST_NODE_NAMES", "chatOpenRouter_0")
-    node_names = [n.strip() for n in nodes_raw.split(",") if n.strip()]
-    async with httpx.AsyncClient(timeout=10) as client:
-        r2 = await client.post(f"{supabase_url}/rest/v1/flow_configs", headers=headers_rw, json={"app_id": "demo-app", "flow_key": "demo", "flow_id": flow_id, "node_names": node_names})
-    if r2.status_code not in (200, 201):
-        raise HTTPException(status_code=500, detail=f"Upsert flow_config failed: {r2.text}")
-
-    # 5) Esecuzione con addebito
-    credits = SupabaseCreditsLedger()
-    pricing = SimplePricingEngine()
-    est = pricing.estimate_credits("flowise_execute", {"flow_id": flow_id})
-    await credits.debit(user_id=user_id, amount=est, reason="flowise_execute")
-    adapter = FlowiseAdapter()
-    # Passo anche _node_names per iniezione chiavi
-    result, usage = await adapter.execute(user_id=user_id, flow_id=flow_id, data={"question": "Hello from E2E", "_node_names": node_names})
+    # 4) Ottieni access_token (password grant) per precompilare la UI
+    anon_key = os.environ.get("SUPABASE_ANON_KEY")
+    if not anon_key:
+        raise HTTPException(status_code=500, detail="SUPABASE_ANON_KEY non configurato")
+    headers_ro = {"apikey": anon_key, "Content-Type": "application/json"}
+    async with httpx.AsyncClient(timeout=20) as client:
+        rt = await client.post(f"{supabase_url}/auth/v1/token?grant_type=password", headers=headers_ro, json={"email": email, "password": password})
+    if rt.status_code != 200:
+        raise HTTPException(status_code=500, detail=f"Get token failed: {rt.text}")
+    access_token = rt.json().get("access_token")
 
     return {
         "user": {"id": user_id, "email": email},
         "provisioning": {"key_name": prov_res.get("key_name"), "saved_user_api_key": prov_res.get("saved_user_api_key")},
-        "flow": {"flow_id": flow_id, "node_names": node_names},
-        "execution": {"result": result, "usage": usage},
+        "access_token": access_token,
     }
 
 
