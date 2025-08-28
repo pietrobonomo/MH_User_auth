@@ -89,3 +89,31 @@ async def upsert_flow_config(
     return {"status": "ok", "config": resp.json()}
 
 
+class GenerateTokenRequest(BaseModel):
+    email: str
+    password: str
+
+
+@router.post("/admin/generate-token")
+async def generate_token(req: GenerateTokenRequest) -> Dict[str, Any]:
+    """Genera un access_token Supabase via password grant (usa ANON KEY)."""
+    supabase_url = os.environ.get("SUPABASE_URL")
+    anon_key = os.environ.get("SUPABASE_ANON_KEY")
+    if not supabase_url or not anon_key:
+        raise HTTPException(status_code=500, detail="Supabase non configurato (URL/ANON_KEY)")
+    headers = {
+        "apikey": anon_key,
+        "Content-Type": "application/json",
+    }
+    body = {"email": req.email, "password": req.password}
+    async with httpx.AsyncClient(timeout=20) as client:
+        resp = await client.post(f"{supabase_url}/auth/v1/token?grant_type=password", headers=headers, json=body)
+    if resp.status_code != 200:
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    data = resp.json()
+    token = data.get("access_token")
+    if not token:
+        raise HTTPException(status_code=500, detail="Token non ottenuto")
+    return {"access_token": token}
+
+

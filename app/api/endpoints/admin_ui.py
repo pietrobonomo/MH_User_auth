@@ -29,6 +29,20 @@ async def admin_ui() -> str:
   <body>
     <h1>FlowStarter Admin</h1>
     <p>Gestisci mapping centralizzato dei flow (flow_configs). Incolla il token Supabase (Bearer) per autenticarti.</p>
+    <details>
+      <summary>Non hai il token? Genera da qui (email/password Supabase)</summary>
+      <div class=\"row\">
+        <div>
+          <label>Email</label>
+          <input id=\"gt_email\" placeholder=\"user@example.com\"/>
+        </div>
+        <div>
+          <label>Password</label>
+          <input id=\"gt_password\" type=\"password\" placeholder=\"********\"/>
+        </div>
+      </div>
+      <button onclick=\"genToken()\">Genera Bearer Token</button>
+    </details>
 
     <div class=\"row\">
       <div>
@@ -81,6 +95,22 @@ async def admin_ui() -> str:
     <pre id=\"out\"></pre>
 
     <script>
+      async function genToken(){
+        const base = document.getElementById('base').value || window.location.origin;
+        const email = document.getElementById('gt_email').value.trim();
+        const password = document.getElementById('gt_password').value.trim();
+        const resp = await fetch(`${base}/core/v1/admin/generate-token`,{
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({email,password})
+        });
+        const data = await resp.json();
+        if(resp.ok && data.access_token){
+          document.getElementById('token').value = data.access_token;
+          document.getElementById('out').textContent = 'Bearer token generato';
+        } else {
+          document.getElementById('out').textContent = `Errore generazione token: ${resp.status} ${JSON.stringify(data)}`;
+        }
+      }
       async function upsertCfg(){
         const base = document.getElementById('base').value || window.location.origin;
         const t = document.getElementById('token').value.trim();
