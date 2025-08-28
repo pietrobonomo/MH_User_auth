@@ -5,6 +5,7 @@ create table if not exists public.profiles (
   id uuid primary key,
   email text,
   credits numeric default 0,
+  openrouter_api_key text,
   created_at timestamp with time zone default now(),
   updated_at timestamp with time zone default now()
 );
@@ -20,6 +21,42 @@ create table if not exists public.credit_transactions (
 
 -- Indice per performance
 create index if not exists idx_credit_tx_user_id on public.credit_transactions(user_id);
+
+-- Chiavi OpenRouter per-utente (mapping user -> key_name)
+create table if not exists public.openrouter_user_keys (
+  user_id uuid primary key,
+  key_name text not null,
+  created_at timestamp with time zone default now()
+);
+
+-- Abilita RLS anche per le chiavi OpenRouter e consenti lettura solo al proprietario
+alter table public.openrouter_user_keys enable row level security;
+do $$ begin
+  begin
+    create policy openrouter_keys_select_self on public.openrouter_user_keys
+      for select using (user_id = auth.uid());
+  exception when duplicate_object then null; end;
+end $$;
+
+-- Configurazioni Flowise per multi-tenant: mapping flow_key -> flow_id, node_names per app
+create table if not exists public.flow_configs (
+  app_id text not null,
+  flow_key text not null,
+  flow_id text not null,
+  node_names jsonb default '[]'::jsonb,
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone default now(),
+  primary key (app_id, flow_key)
+);
+
+alter table public.flow_configs enable row level security;
+-- Policy di esempio: nessun accesso client; accesso solo via service role
+do $$ begin
+  begin
+    create policy flow_configs_deny_all on public.flow_configs for all
+      using (false) with check (false);
+  exception when duplicate_object then null; end;
+end $$;
 
 -- Funzione atomica per addebitare crediti
 create or replace function public.debit_user_credits(
@@ -69,4 +106,20 @@ do $$ begin
   exception when duplicate_object then null; end;
 end $$;
 
+
+-- Creazione organica profilo alla registrazione (trigger su auth.users)
+create or replace function public.handle_new_user_profile()
+returns trigger as $$
+begin
+  insert into public.profiles (id, email, credits, created_at, updated_at)
+  values (new.id, new.email, 0, now(), now())
+  on conflict (id) do nothing;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists on_auth_user_created_profile on auth.users;
+create trigger on_auth_user_created_profile
+after insert on auth.users
+for each row execute function public.handle_new_user_profile();
 

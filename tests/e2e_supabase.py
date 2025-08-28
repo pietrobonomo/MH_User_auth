@@ -65,13 +65,17 @@ def main() -> None:
     r = c.get("/core/v1/credits/balance", headers=headers)
     print("BAL_BEFORE:", r.status_code, r.json())
 
-    est_body = {"operation_type": "openrouter_chat", "context": {"model": "openrouter/model"}}
+    est_body = {"operation_type": "openrouter_chat", "context": {"model": os.environ.get("OPENROUTER_TEST_MODEL", "openrouter/auto")}}
     r = c.post("/core/v1/credits/estimate", headers=headers, json=est_body)
     print("ESTIMATE:", r.status_code, r.json())
 
-    chat_body = {"model": "openrouter/model", "messages": [{"role": "user", "content": "Ciao!"}]}
-    r = c.post("/core/v1/providers/openrouter/chat", headers=headers, json=chat_body)
-    print("CHAT:", r.status_code, json.dumps(r.json(), ensure_ascii=False))
+    model = os.environ.get("OPENROUTER_TEST_MODEL", "openrouter/auto")
+    chat_body = {"model": model, "messages": [{"role": "user", "content": "Ciao!"}]}
+    try:
+        r = c.post("/core/v1/providers/openrouter/chat", headers=headers, json=chat_body)
+        print("CHAT:", r.status_code, json.dumps(r.json(), ensure_ascii=False))
+    except Exception as e:
+        print("CHAT_ERROR:", str(e))
 
     r = c.get("/core/v1/credits/balance", headers=headers)
     print("BAL_AFTER:", r.status_code, r.json())

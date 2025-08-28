@@ -20,6 +20,7 @@ python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 5050
 - GET `/core/v1/credits/balance`
 - POST `/core/v1/credits/estimate`
 - POST `/core/v1/providers/openrouter/chat`
+- POST `/core/v1/providers/flowise/execute`
 
 ## Variabili d'ambiente
 
@@ -27,16 +28,31 @@ Vedi `.env.example`.
 
 - Supabase: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SUPABASE_JWKS_URL` (o `SUPABASE_VERIFY_DISABLED=1` in dev)
 - Pricing: `PRICING_DEFAULT_CREDITS_PER_CALL` (default: 1.0), `PRICING_MODEL_MAP_JSON`
-- OpenRouter: `OPENROUTER_BASE_URL` (default `https://openrouter.ai/api/v1`), `OPENROUTER_PROVISIONING_KEY`
+- OpenRouter: `OPENROUTER_BASE_URL`, `OPENROUTER_PROVISIONING_KEY`
+- Flowise: `FLOWISE_BASE_URL`, `FLOWISE_API_KEY`
+- (Opzionale single-tenant) `NL_FLOW_*_ID`, `FLOWISE_NODE_MAP_JSON`
 
-## Bootstrap Supabase (via SQL Editor)
+## Modalità multi-tenant
 
-1. Supabase Dashboard → Settings → SQL → New Query
-2. Incolla `flow_starter/sql/001_core_schema.sql`
-3. Esegui (Run): crea `profiles`, `credit_transactions` e funzione `debit_user_credits`
-4. Configura `.env` con `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SUPABASE_JWKS_URL`
+- Tabella Supabase `flow_configs(app_id, flow_key, flow_id, node_names JSON)` (già prevista nello schema SQL)
+- Runtime: header `X-App-Id` e body con `flow_key`:
+```json
+{ "flow_key": "news_writer", "data": { "input": "..." } }
+```
+- Il Core risolve `flow_id` e `node_names` dal DB per quella app; inietta chiavi nei nodi e chiama Flowise.
+
+### Admin API
+- GET `/core/v1/admin/flow-configs?app_id=...&flow_key=...`
+- POST `/core/v1/admin/flow-configs` body:
+```json
+{ "app_id": "my-app", "flow_key": "news_writer", "flow_id": "<id>", "node_names": ["chatOpenRouter_0"] }
+```
+
+## Sicurezza
+- JWT Supabase verificati (JWKS) o dev bypass
+- Chiavi OpenRouter per utente solo server-side (Supabase), iniettate nel payload verso Flowise (mai esposte al client)
+- RLS e deny-all su `flow_configs` (solo service_role del Core)
 
 ## Note
-
-- Verifica JWT via JWKS (se configurato) altrimenti decodifica senza verifica (solo dev).
-- Ledger crediti via REST (profiles.credits e RPC debit_user_credits).
+- Verifica JWT via JWKS (se configurato) altrimenti decodifica senza verifica (solo dev)
+- Ledger crediti via REST (profiles.credits e RPC debit_user_credits)

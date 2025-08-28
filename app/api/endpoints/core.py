@@ -5,6 +5,7 @@ from app.adapters.auth_supabase import SupabaseAuthBackend
 from app.adapters.credits_supabase import SupabaseCreditsLedger
 from app.adapters.provider_openrouter import OpenRouterAdapter
 from app.core.pricing_simple import SimplePricingEngine
+from app.adapters.provider_flowise import FlowiseAdapter
 
 router = APIRouter()
 
@@ -30,6 +31,7 @@ auth_backend = SupabaseAuthBackend()
 credits_ledger = SupabaseCreditsLedger()
 openrouter = OpenRouterAdapter()
 pricing = SimplePricingEngine()
+flowise = FlowiseAdapter()
 
 @router.get("/users/me")
 async def get_me(Authorization: Optional[str] = Header(default=None)) -> Dict[str, Any]:
@@ -105,3 +107,42 @@ async def openrouter_chat(
     response, usage = await openrouter.chat(user_id=user["id"], model=payload.model, messages=[m.model_dump() for m in payload.messages], options=payload.options)
     txn_id = debit_res.get("transaction_id") if isinstance(debit_res, dict) else None
     return ChatResponse(response=response, usage=usage, transaction_id=txn_id)
+
+
+class FlowiseRequest(BaseModel):
+    flow_id: Optional[str] = None
+    flow_key: Optional[str] = None
+    node_names: Optional[List[str]] = None
+    data: Dict[str, Any]
+
+
+@router.post("/providers/flowise/execute")
+async def flowise_execute(
+    payload: FlowiseRequest,
+    Authorization: Optional[str] = Header(default=None),
+    X_App_Id: Optional[str] = Header(default=None, alias="X-App-Id"),
+    Idempotency_Key: Optional[str] = Header(default=None, alias="Idempotency-Key")
+) -> Dict[str, Any]:
+    if not Authorization:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
+    token = Authorization.replace("Bearer ", "")
+    user = await auth_backend.get_current_user(token)
+
+    # Determina flow_id
+    flow_id = payload.flow_id
+    if not flow_id and payload.flow_key:
+        from app.services.flowise_config_service import FlowiseConfigService
+        cfg = await FlowiseConfigService().get_config_for_user(user["id"], payload.flow_key, app_id=X_App_Id)
+        flow_id = cfg.get("flow_id") if cfg else None
+        # Se node_names non passati, prova da config
+        if not payload.node_names and cfg and isinstance(cfg.get("node_names"), list):
+            payload.node_names = [str(n) for n in cfg["node_names"]]
+    if not flow_id:
+        raise HTTPException(status_code=400, detail="flow_id o flow_key obbligatorio")
+
+    # Stima e addebito
+    est = pricing.estimate_credits("flowise_execute", {"flow_id": flow_id})
+    _ = await credits_ledger.debit(user_id=user["id"], amount=est, reason="flowise_execute", idempotency_key=Idempotency_Key)
+
+    result, usage = await flowise.execute(user_id=user["id"], flow_id=flow_id, data={**payload.data, **({} if not payload.node_names else {"_node_names": payload.node_names})})
+    return {"result": result, "usage": usage}
