@@ -27,11 +27,17 @@ async def get_flow_config(
     app_id: str,
     flow_key: str,
     Authorization: Optional[str] = Header(default=None),
+    X_Admin_Key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
 ) -> Dict[str, Any]:
-    if not Authorization:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
-    token = Authorization.replace("Bearer ", "")
-    _ = await auth_backend.get_current_user(token)
+    # Admin key bypass
+    core_admin_key = os.environ.get("CORE_ADMIN_KEY")
+    if X_Admin_Key and core_admin_key and X_Admin_Key == core_admin_key:
+        pass
+    else:
+        if not Authorization:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
+        token = Authorization.replace("Bearer ", "")
+        _ = await auth_backend.get_current_user(token)
 
     supabase_url = os.environ.get("SUPABASE_URL")
     service_key = os.environ.get("SUPABASE_SERVICE_KEY")
@@ -59,11 +65,17 @@ async def get_flow_config(
 async def upsert_flow_config(
     payload: FlowConfigUpsert,
     Authorization: Optional[str] = Header(default=None),
+    X_Admin_Key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
 ) -> Dict[str, Any]:
-    if not Authorization:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
-    token = Authorization.replace("Bearer ", "")
-    _ = await auth_backend.get_current_user(token)
+    # Admin key bypass
+    core_admin_key = os.environ.get("CORE_ADMIN_KEY")
+    if X_Admin_Key and core_admin_key and X_Admin_Key == core_admin_key:
+        pass
+    else:
+        if not Authorization:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
+        token = Authorization.replace("Bearer ", "")
+        _ = await auth_backend.get_current_user(token)
 
     supabase_url = os.environ.get("SUPABASE_URL")
     service_key = os.environ.get("SUPABASE_SERVICE_KEY")

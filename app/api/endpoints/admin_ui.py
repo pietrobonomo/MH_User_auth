@@ -30,18 +30,16 @@ async def admin_ui() -> str:
     <h1>FlowStarter Admin</h1>
     <p>Gestisci mapping centralizzato dei flow (flow_configs). Incolla il token Supabase (Bearer) per autenticarti.</p>
     <details>
-      <summary>Non hai il token? Genera da qui (email/password Supabase)</summary>
-      <div class=\"row\">
-        <div>
-          <label>Email</label>
-          <input id=\"gt_email\" placeholder=\"user@example.com\"/>
-        </div>
-        <div>
-          <label>Password</label>
-          <input id=\"gt_password\" type=\"password\" placeholder=\"********\"/>
-        </div>
+      <summary>Non hai il token? Opzioni di autenticazione</summary>
+      <p>
+        1) Se hai un token Supabase, incollalo in "Bearer Token".<br/>
+        2) In alternativa, puoi usare una chiave admin del Core (solo per configurazione) compilandola qui sotto.
+      </p>
+      <div>
+        <label>Core Admin Key (server-side)</label>
+        <input id=\"admin_key\" placeholder=\"in .env: CORE_ADMIN_KEY=...\"/>
       </div>
-      <button onclick=\"genToken()\">Genera Bearer Token</button>
+      <small>Se inserisci la Core Admin Key, non è necessario il Bearer Token per le chiamate admin.</small>
     </details>
 
     <div class=\"row\">
@@ -95,46 +93,32 @@ async def admin_ui() -> str:
     <pre id=\"out\"></pre>
 
     <script>
-      async function genToken(){
-        const base = document.getElementById('base').value || window.location.origin;
-        const email = document.getElementById('gt_email').value.trim();
-        const password = document.getElementById('gt_password').value.trim();
-        const resp = await fetch(`${base}/core/v1/admin/generate-token`,{
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({email,password})
-        });
-        const data = await resp.json();
-        if(resp.ok && data.access_token){
-          document.getElementById('token').value = data.access_token;
-          document.getElementById('out').textContent = 'Bearer token generato';
-        } else {
-          document.getElementById('out').textContent = `Errore generazione token: ${resp.status} ${JSON.stringify(data)}`;
-        }
-      }
       async function upsertCfg(){
         const base = document.getElementById('base').value || window.location.origin;
         const t = document.getElementById('token').value.trim();
+        const adminKey = document.getElementById('admin_key').value.trim();
         const app_id = document.getElementById('app_id').value.trim();
         const flow_key = document.getElementById('flow_key').value.trim();
         const flow_id = document.getElementById('flow_id').value.trim();
         const nodesRaw = document.getElementById('nodes').value.trim();
         const node_names = nodesRaw ? nodesRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
-        const resp = await fetch(`${base}/core/v1/admin/flow-configs`,{
-          method:'POST',
-          headers:{'Content-Type':'application/json','Authorization':`Bearer ${t}`},
-          body: JSON.stringify({app_id, flow_key, flow_id, node_names})
-        });
+        const headers = {'Content-Type':'application/json'};
+        if(t) headers['Authorization'] = `Bearer ${t}`;
+        if(adminKey) headers['X-Admin-Key'] = adminKey;
+        const resp = await fetch(`${base}/core/v1/admin/flow-configs`,{ method:'POST', headers, body: JSON.stringify({app_id, flow_key, flow_id, node_names}) });
         const txt = await resp.text();
         document.getElementById('out').textContent = `STATUS ${resp.status}\n\n${txt}`;
       }
       async function getCfg(){
         const base = document.getElementById('base').value || window.location.origin;
         const t = document.getElementById('token').value.trim();
+        const adminKey = document.getElementById('admin_key').value.trim();
         const app_id = document.getElementById('g_app_id').value.trim();
         const flow_key = document.getElementById('g_flow_key').value.trim();
-        const resp = await fetch(`${base}/core/v1/admin/flow-configs?app_id=${encodeURIComponent(app_id)}&flow_key=${encodeURIComponent(flow_key)}`,{
-          headers:{'Authorization':`Bearer ${t}`}
-        });
+        const headers = {};
+        if(t) headers['Authorization'] = `Bearer ${t}`;
+        if(adminKey) headers['X-Admin-Key'] = adminKey;
+        const resp = await fetch(`${base}/core/v1/admin/flow-configs?app_id=${encodeURIComponent(app_id)}&flow_key=${encodeURIComponent(flow_key)}`,{ headers });
         const txt = await resp.text();
         document.getElementById('out').textContent = `STATUS ${resp.status}\n\n${txt}`;
       }
