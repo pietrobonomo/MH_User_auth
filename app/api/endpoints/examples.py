@@ -35,7 +35,13 @@ async def examples_client() -> str:
   </head>
   <body>
     <h1>FlowStarter Example Client</h1>
-    <p>Prova le chiamate al Core (Flowise via flow_key). Inserisci token Supabase dell’utente.</p>
+    <p>Prova le chiamate al Core (Flowise via flow_key). Inserisci token Supabase dell’utente oppure genera un utente/demo end-to-end con un click.</p>
+
+    <h2>1) Crea utente demo + provisioning + config (auto)</h2>
+    <button onclick=\"autoRun()\">Crea utente demo e configura</button>
+    <small>Questo creerà un utente, farà il provisioning della chiave OpenRouter e salverà una config (app_id=demo-app, flow_key=demo).</small>
+
+    <h2>2) Esegui un flow per flow_key</h2>
 
     <div class=\"row\">
       <div>
@@ -66,6 +72,20 @@ async def examples_client() -> str:
     <pre id=\"out\"></pre>
 
     <script>
+      async function autoRun(){
+        const base = document.getElementById('base').value || window.location.origin;
+        const resp = await fetch(`${base}/core/v1/examples/e2e-run`,{method:'POST'});
+        const txt = await resp.text();
+        document.getElementById('out').textContent = `AUTO E2E STATUS ${resp.status}\n\n${txt}`;
+        // Prefill valori utili
+        try {
+          const data = JSON.parse(txt);
+          document.getElementById('app').value = 'demo-app';
+          document.getElementById('flow_key').value = 'demo';
+          // Suggersci un payload di esempio
+          document.getElementById('data').value = JSON.stringify({question: 'Hello from example client'}, null, 2);
+        } catch(e){}
+      }
       async function execFlow(){
         const base = document.getElementById('base').value || window.location.origin;
         const t = document.getElementById('token').value.trim();
