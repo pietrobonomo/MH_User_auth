@@ -83,7 +83,7 @@ class PricingConfigAPI(BaseModel):
     minimum_operation_cost_credits: float
     flow_costs_usd: Dict[str, float] = {}
     signup_initial_credits: float
-    minimum_affordability_credits: float
+    minimum_affordability_per_app: Dict[str, float] = {}
 
 # --- API Endpoints ---
 @router.get("/pricing/config", response_model=PricingConfigAPI)
@@ -120,7 +120,7 @@ async def get_pricing_config(
         "minimum_operation_cost_credits": float(cfg_json.get("minimum_operation_cost_credits", 0.0) or 0.01),
         "flow_costs_usd": cfg_json.get("flow_costs_usd", {}),
         "signup_initial_credits": float(cfg_json.get("signup_initial_credits", 0.0) or 0.0),
-        "minimum_affordability_credits": float(cfg_json.get("minimum_affordability_credits", 0.0) or 0.0),
+        "minimum_affordability_per_app": cfg_json.get("minimum_affordability_per_app", {}),
     }
 
 @router.put("/pricing/config", response_model=PricingConfigAPI)
@@ -150,5 +150,5 @@ async def update_pricing_config(
         "minimum_operation_cost_credits": updated.minimum_operation_cost_credits,
         "flow_costs_usd": updated.flow_costs_usd,
         "signup_initial_credits": getattr(updated, "signup_initial_credits", 0.0),
-        "minimum_affordability_credits": getattr(updated, "minimum_affordability_credits", 0.0),
+        "minimum_affordability_per_app": getattr(updated, "minimum_affordability_per_app", {}),
     }

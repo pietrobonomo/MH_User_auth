@@ -9,7 +9,8 @@ import json
 import logging
 from datetime import datetime
 from typing import Dict, Any, Optional, List
-from dataclasses import dataclass, field, asdict
+import httpx
+from dataclasses import dataclass, field, asdict, fields
 
 logger = logging.getLogger(__name__)
 
@@ -71,8 +72,8 @@ class PricingConfig:
     # Nuovi campi gestiti da business dashboard
     # Crediti iniziali assegnati all'iscrizione utente
     signup_initial_credits: float = 0.0
-    # Soglia minima di affordability a livello app per sbloccare operazioni
-    minimum_affordability_credits: float = 0.0
+    # Soglie minime di affordability per app: app_id -> credits richiesti
+    minimum_affordability_per_app: Dict[str, float] = field(default_factory=dict)
 
 class AdvancedPricingSystem:
     """
@@ -81,7 +82,8 @@ class AdvancedPricingSystem:
     
     def __init__(self, config_file: str):
         self.config_file = config_file
-        self.config = self._load_config()
+        # Fonte primaria: Supabase (per-azienda). Fallback a default se Supabase non disponibile.
+        self.config = PricingConfig()
         
         # Costi base delle operazioni in USD (hardcoded ma basati su dati reali)
         # In futuro, anche questi potrebbero diventare configurabili
@@ -97,40 +99,98 @@ class AdvancedPricingSystem:
         }
 
     def _load_config(self) -> PricingConfig:
-        """Carica la configurazione da un file JSON, o ne crea uno di default."""
-        if os.path.exists(self.config_file):
-            try:
-                with open(self.config_file, 'r') as f:
-                    data = json.load(f)
-                    # Converte la lista di dizionari in una lista di oggetti FixedCost
-                    if 'fixed_monthly_costs_usd' in data:
-                        data['fixed_monthly_costs_usd'] = [FixedCost(**cost) for cost in data['fixed_monthly_costs_usd']]
-                    # Garantisce la presenza del mapping per flow
-                    if 'flow_costs_usd' not in data or not isinstance(data['flow_costs_usd'], dict):
-                        data['flow_costs_usd'] = {}
-                    return PricingConfig(**data)
-            except (json.JSONDecodeError, TypeError, KeyError) as e:
-                logging.warning(f"⚠️ Errore nel caricare {self.config_file}: {e}. Verrà creato un nuovo file di default.")
+        """Legacy rimosso: ritorna default."""
+        return PricingConfig()
+
+    async def _load_from_supabase_async(self, app_id: Optional[str] = None) -> Optional[PricingConfig]:
+        """Carica la configurazione da Supabase.
         
-        # Se il file non esiste o è corrotto, crea e salva una config di default
-        default_config = PricingConfig()
-        self.save_config(default_config)
-        return default_config
+        Strategia:
+        - Carica SEMPRE la riga 'default' (single source of truth a livello progetto)
+        - Per retrocompatibilità, se specificato, prova anche la riga per app_id
+        - Se viene trovata una config valida, aggiorna self.config e la ritorna
+        """
+        supabase_url = os.environ.get("SUPABASE_URL")
+        service_key = os.environ.get("SUPABASE_SERVICE_KEY")
+        if not supabase_url or not service_key:
+            return None
+        headers = {
+            "apikey": service_key,
+            "Authorization": f"Bearer {service_key}",
+            "Accept": "application/json",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                # 1) Prova riga 'default'
+                r = await client.get(f"{supabase_url}/rest/v1/pricing_configs?app_id=eq.default&select=config", headers=headers)
+                cfg_obj: Optional[Dict[str, Any]] = None
+                if r.status_code == 200:
+                    data = r.json()
+                    if data:
+                        cfg_obj = data[0].get("config") or {}
+                # 2) Retrocompatibilità: se non trovata e app_id specificato, prova quella riga
+                if cfg_obj is None and app_id and app_id != "default":
+                    r2 = await client.get(f"{supabase_url}/rest/v1/pricing_configs?app_id=eq.{app_id}&select=config", headers=headers)
+                    if r2.status_code == 200:
+                        data2 = r2.json()
+                        if data2:
+                            cfg_obj = data2[0].get("config") or {}
+
+            if cfg_obj is None:
+                return None
+
+            # Parsing e normalizzazione
+            if not isinstance(cfg_obj, dict):
+                cfg_obj = json.loads(cfg_obj) if isinstance(cfg_obj, str) else {}
+
+            # Filtra chiavi sconosciute per compat con versioni legacy
+            valid_field_names = {f.name for f in fields(PricingConfig)}
+            filtered: Dict[str, Any] = {k: v for k, v in cfg_obj.items() if k in valid_field_names}
+
+            # Normalizzazioni
+            if 'fixed_monthly_costs_usd' in filtered:
+                try:
+                    filtered['fixed_monthly_costs_usd'] = [FixedCost(**c) for c in filtered['fixed_monthly_costs_usd']]
+                except Exception:
+                    filtered['fixed_monthly_costs_usd'] = []
+            if 'flow_costs_usd' not in filtered or not isinstance(filtered.get('flow_costs_usd'), dict):
+                filtered['flow_costs_usd'] = {}
+
+            loaded = PricingConfig(**filtered)
+            # Aggiorna in memoria per uso successivo
+            self.config = loaded
+            logger.info("📥 Pricing config caricata da Supabase (source=default%s)", f", fallback={app_id}" if app_id and app_id != "default" else "")
+            return loaded
+        except Exception as e:
+            logger.warning(f"⚠️ Errore caricamento pricing da Supabase: {e}")
+            return None
+
+    def save_to_supabase(self, app_id: str, config: Optional[PricingConfig] = None) -> bool:
+        """Salva la configurazione su Supabase come fonte di verità.
+        Ritorna True/False senza sollevare eccezioni."""
+        supabase_url = os.environ.get("SUPABASE_URL")
+        service_key = os.environ.get("SUPABASE_SERVICE_KEY")
+        if not supabase_url or not service_key:
+            return False
+        cfg_obj = config or self.config
+        try:
+            payload = asdict(cfg_obj)
+            headers = {
+                "apikey": service_key,
+                "Authorization": f"Bearer {service_key}",
+                "Content-Type": "application/json",
+                "Prefer": "resolution=merge-duplicates,return=representation",
+            }
+            with httpx.Client(timeout=12.0) as client:
+                r = client.post(f"{supabase_url}/rest/v1/pricing_configs", headers=headers, json={"app_id": app_id, "config": payload})
+            return r.status_code in (200, 201)
+        except Exception as e:
+            logger.warning(f"⚠️ Errore salvataggio pricing su Supabase: {e}")
+            return False
 
     def save_config(self, config: Optional[PricingConfig] = None) -> bool:
-        """Salva la configurazione corrente o una fornita su file JSON."""
-        config_to_save = config or self.config
-        try:
-            # Assicura che la directory esista
-            os.makedirs(os.path.dirname(self.config_file), exist_ok=True)
-            with open(self.config_file, 'w') as f:
-                # Usa asdict per convertire la dataclass (e gli oggetti FixedCost annidati) in un dizionario
-                json.dump(asdict(config_to_save), f, indent=2)
-            logging.info(f"💾 Configurazione pricing salvata in {self.config_file}")
-            return True
-        except Exception as e:
-            logging.error(f"❌ Errore durante il salvataggio della configurazione: {e}")
-            return False
+        """Legacy rimosso: non salva su file. Ritorna True per compatibilità."""
+        return True
 
     def get_config(self) -> PricingConfig:
         """Ritorna la configurazione corrente."""
@@ -145,8 +205,7 @@ class AdvancedPricingSystem:
             new_config_data['flow_costs_usd'] = {}
         
         self.config = PricingConfig(**new_config_data)
-        self.save_config()
-        logging.info("🔧 Configurazione pricing aggiornata e salvata.")
+        logging.info("🔧 Configurazione pricing aggiornata (in memoria).")
         return self.config
 
     def calculate_operation_cost_credits(self, operation_type: str, context: Optional[Dict] = None) -> float:

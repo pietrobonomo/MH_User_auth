@@ -47,6 +47,44 @@ def get_user_keys_service() -> OpenRouterUserKeysService:
 def get_usage_service() -> OpenRouterUsageService:
     return OpenRouterUsageService()
 
+
+@router.get("/providers/flowise/affordability-check")
+async def flowise_affordability_check(
+    Authorization: Optional[str] = Header(default=None),
+    X_App_Id: Optional[str] = Header(default=None, alias="X-App-Id"),
+    flow_id: Optional[str] = Query(default=None),
+    flow_key: Optional[str] = Query(default=None),
+) -> Dict[str, Any]:
+    """Diagnostica: esegue SOLO il pre-check di affordability per-app, senza provisioning o chiamate a Flowise.
+
+    Ritorna i valori usati per il gate: app_id, threshold, available e il risultato.
+    """
+    if not Authorization:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
+    token = Authorization.replace("Bearer ", "")
+    user = await auth_backend.get_current_user(token)
+
+    app_id_for_threshold = X_App_Id or os.environ.get("CORE_APP_ID", "default")
+    # Carica config da Supabase (default-first) per diagnosi accurata
+    try:
+        await pricing._load_from_supabase_async(app_id_for_threshold)
+    except Exception:
+        pass
+    per_app_map = getattr(pricing.config, "minimum_affordability_per_app", {}) or {}
+    min_gate = float(per_app_map.get(app_id_for_threshold, 0.0) or 0.0)
+    available = await credits_ledger.get_balance(user["id"])
+    can_afford = available >= min_gate
+
+    return {
+        "app_id": app_id_for_threshold,
+        "minimum_required": min_gate,
+        "available_credits": available,
+        "can_afford": can_afford,
+        "flow_key": flow_key,
+        "flow_id": flow_id,
+        "phase": "precheck_only"
+    }
+
 @router.get("/users/me")
 async def get_me(Authorization: Optional[str] = Header(default=None)) -> Dict[str, Any]:
     if not Authorization:
@@ -129,34 +167,47 @@ async def flowise_execute(
 
     pricing_breakdown = pricing.calculate_flow_pricing(payload.flow_key, flow_id)
 
-    # Affordability pre-check prima di eseguire il flow
+    # Affordability pre-check per-app: soglia minima per app
+    app_id_for_threshold = X_App_Id or os.environ.get("CORE_APP_ID", "default")
+    logging.info(f"🔍 INIZIO Pre-check affordability: X_App_Id={X_App_Id}, app_id_for_threshold={app_id_for_threshold}")
+    
+    # CRITICO: ricarica config da Supabase prima del check (default-first)
     try:
-        estimated_cost = pricing.calculate_operation_cost_credits("flowise_execute", {"flow_key": payload.flow_key, "flow_id": flow_id})
-        # Applica gate minimo a livello app
-        min_gate = getattr(pricing.config, "minimum_affordability_credits", 0.0) or 0.0
-        required = max(estimated_cost, float(min_gate))
+        fresh_config = await pricing._load_from_supabase_async(app_id_for_threshold)
+        if fresh_config:
+            per_app_map = getattr(fresh_config, "minimum_affordability_per_app", {}) or {}
+        else:
+            per_app_map = getattr(pricing.config, "minimum_affordability_per_app", {}) or {}
+        logging.warning(f"🔍 PCHECK: map_keys={list(per_app_map.keys())} app={app_id_for_threshold}")
+        min_gate = float(per_app_map.get(app_id_for_threshold, 0.0) or 0.0)
+        required = float(min_gate)
         available = await credits_ledger.get_balance(user["id"])
+        logging.warning(f"🔍 PCHECK: app={app_id_for_threshold} threshold={min_gate} available={available} required={required}")
+        
         if available < required:
             detail = {
                 "error_type": "insufficient_credits",
                 "can_afford": False,
-                "estimated_cost": float(estimated_cost),
+                "estimated_cost": None,
                 "minimum_required": float(required),
                 "available_credits": float(available),
                 "shortage": float(max(0.0, required - available)),
                 "flow_key": payload.flow_key,
                 "flow_id": flow_id,
+                "app_id": app_id_for_threshold,
             }
             headers = {
-                "X-Estimated-Cost-Credits": str(estimated_cost),
                 "X-Min-Affordability": str(min_gate),
+                "X-App-Id": app_id_for_threshold or "",
                 "X-Available-Credits": str(available),
             }
+            logging.warning(f"❌ BLOCCATO per crediti insufficienti: {available} < {required}")
             raise HTTPException(status_code=402, detail=detail, headers=headers)
     except HTTPException:
         raise
     except Exception as e:
-        logging.warning(f"Affordability pre-check non disponibile: {e}")
+        logging.error(f"❌ ERRORE CRITICO nel pre-check affordability: {e}", exc_info=True)
+        # Non bloccare se il pre-check fallisce, ma logga l'errore
 
     # Usage prima/dopo obbligatorio (no fallback)
     user_api_key = await get_user_keys_service().get_user_api_key(user["id"])

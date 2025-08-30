@@ -276,3 +276,58 @@ async def provision_openrouter_for_user(
         )
 
 
+
+@router.get("/users")
+async def list_users(
+    Authorization: Optional[str] = Header(default=None),
+    X_Admin_Key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
+    q: Optional[str] = None,
+    limit: int = 50,
+) -> Dict[str, Any]:
+    """Ritorna elenco utenti da Supabase (tabella `profiles`).
+
+    Args:
+        q: filtro email (ilike *q*)
+        limit: massimo numero di risultati
+    """
+    # Admin key bypass o token utente richiesto
+    core_admin_key = os.environ.get("CORE_ADMIN_KEY")
+    if not (X_Admin_Key and core_admin_key and X_Admin_Key == core_admin_key):
+        if not Authorization:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
+        token = Authorization.replace("Bearer ", "")
+        await auth_backend.get_current_user(token)
+
+    supabase_url = os.environ.get("SUPABASE_URL")
+    service_key = os.environ.get("SUPABASE_SERVICE_KEY")
+    if not supabase_url or not service_key:
+        raise HTTPException(status_code=500, detail="Supabase non configurato")
+
+    headers = {
+        "apikey": service_key,
+        "Authorization": f"Bearer {service_key}",
+        "Accept": "application/json",
+    }
+
+    # Costruisci query
+    select = "id,email,credits,created_at"
+    base = f"{supabase_url}/rest/v1/profiles?select={select}&order=created_at.desc&limit={max(1, min(limit, 500))}"
+    if q:
+        base += f"&email=ilike.*{q}*"
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.get(base, headers=headers)
+    if resp.status_code != 200:
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    rows = resp.json() or []
+    users = []
+    for r in rows:
+        if isinstance(r, dict):
+            users.append({
+                "id": r.get("id"),
+                "email": r.get("email"),
+                "credits": r.get("credits"),
+                "created_at": r.get("created_at"),
+            })
+    return {"count": len(users), "users": users}
+

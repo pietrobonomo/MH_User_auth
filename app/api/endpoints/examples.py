@@ -51,19 +51,33 @@ async def examples_client() -> str:
         <input id=\"user_password\" type=\"password\" placeholder=\"Temp1234!\" value=\"Temp1234!\"/>
       </div>
     </div>
+    <div class=\"row\">
+      <div>
+        <label>Admin Key (opzionale)</label>
+        <input id=\"admin_key\" placeholder=\"CORE_ADMIN_KEY per endpoint admin\" />
+        <small class=\"hint\">Viene salvata in localStorage e usata per /admin/* quando presente.</small>
+      </div>
+      <div>
+        <button onclick=\"saveAdminKey()\" style=\"margin-top:28px;background:#6c757d\">💾 Salva Admin Key</button>
+      </div>
+    </div>
     <div style=\"margin:12px 0\">
       <button onclick=\"createUser()\">👤 Crea Nuovo Utente</button>
       <button onclick=\"generateToken()\" style=\"margin-left:8px;background:#17a2b8\">🔑 Genera Token</button>
     </div>
     <small class=\"hint\">Per caricare gli App IDs e i Flow Keys, è consigliato avere un Bearer Token valido.</small>
     
-    <h3>Utenti Salvati</h3>
+    <h3>Utenti</h3>
     <div style=\"margin:8px 0\">
       <button onclick=\"saveUser()\" style=\"background:#6c757d\">💾 Salva Utente</button>
       <select id=\"saved_users\" onchange=\"loadUser()\" style=\"margin-left:8px;padding:8px\">
         <option value=\"\">-- seleziona utente salvato --</option>
       </select>
       <button onclick=\"clearUsers()\" style=\"margin-left:8px;background:#dc3545\">🗑️ Pulisci</button>
+      <button onclick=\"loadSupabaseUsers()\" style=\"margin-left:8px;background:#0d6efd\">🔄 Carica da Supabase</button>
+      <select id=\"supabase_users\" onchange=\"pickSupabaseUser()\" style=\"margin-left:8px;padding:8px\">
+        <option value=\"\">-- utenti Supabase --</option>
+      </select>
     </div>
 
     <h2>2) Esegui un flow per flow_key</h2>
@@ -221,6 +235,17 @@ async def examples_client() -> str:
             if(resp.ok) {
               try { const data = JSON.parse(txt); if(data.access_token){ document.getElementById('token').value = data.access_token; try{ saveCurrentToken(data.access_token); }catch(_){ } document.getElementById('user_email').value = data.user.email; } document.getElementById('out').textContent = `✅ UTENTE CREATO\n\n${JSON.stringify(data, null, 2)}`; await refreshAppIds(); }
               catch(e) { document.getElementById('out').textContent = `✅ UTENTE CREATO\n\n${txt}`; }
+              // Autosalva utente creato
+              try {
+                const email = (data && data.user && data.user.email) ? data.user.email : '';
+                const token = (data && data.access_token) ? data.access_token : '';
+                if(email && token){
+                  const savedUsers = JSON.parse(localStorage.getItem('flowstarter_users') || '{}');
+                  savedUsers[email] = { password: 'Temp1234!', token, savedAt: new Date().toISOString() };
+                  localStorage.setItem('flowstarter_users', JSON.stringify(savedUsers));
+                  refreshSavedUsers();
+                }
+              } catch(_){ }
             } else { document.getElementById('out').textContent = `❌ ERRORE CREAZIONE: ${txt}`; }
           } catch(error) { document.getElementById('out').textContent = `❌ ERRORE: ${error.message}`; }
         }
@@ -379,15 +404,54 @@ async def examples_client() -> str:
           Object.keys(savedUsers).forEach(email => { const opt = document.createElement('option'); opt.value = email; opt.textContent = email; sel.appendChild(opt); });
         }
 
+        function loadAdminKey(){
+          try{ const v = localStorage.getItem('flowstarter_admin_key'); if(v){ const el = document.getElementById('admin_key'); if(el) el.value = v; } }catch(_){ }
+        }
+        function saveAdminKey(){
+          try{ const v = document.getElementById('admin_key').value.trim(); if(v){ localStorage.setItem('flowstarter_admin_key', v); } else { localStorage.removeItem('flowstarter_admin_key'); } }catch(_){ }
+          try{ loadSupabaseUsers(); }catch(_){ }
+        }
+
+        async function loadSupabaseUsers(){
+          const apiBase = makeApiBase();
+          const t = document.getElementById('token').value.trim();
+          const sel = document.getElementById('supabase_users');
+          sel.innerHTML = '<option value=\"\">-- caricamento --</option>';
+          let headers = {'Content-Type': 'application/json'};
+          if(t) headers['Authorization'] = `Bearer ${t}`;
+          const adminKey = localStorage.getItem('flowstarter_admin_key');
+          if(adminKey) headers['X-Admin-Key'] = adminKey;
+          try{
+            const resp = await fetch(`${apiBase}/admin/users?limit=100`, { headers });
+            const txt = await resp.text();
+            if(resp.ok){
+              const data = JSON.parse(txt);
+              sel.innerHTML = '<option value=\"\">-- utenti Supabase --</option>';
+              if(data && Array.isArray(data.users)){
+                data.users.forEach(u => { const opt = document.createElement('option'); opt.value = u.email; opt.textContent = `${u.email} (${u.credits ?? 0} cr)`; sel.appendChild(opt); });
+              }
+            } else {
+              sel.innerHTML = '<option value=\"\">-- errore caricamento --</option>';
+            }
+          }catch(e){ sel.innerHTML = '<option value=\"\">-- errore rete --</option>'; }
+        }
+
+        function pickSupabaseUser(){
+          const sel = document.getElementById('supabase_users');
+          const email = sel.value;
+          if(!email) return;
+          document.getElementById('user_email').value = email;
+        }
+
         // Esporta solo le funzioni esistenti
-        window.createUser = createUser; window.generateToken = generateToken; window.refreshFlowKeys = refreshFlowKeys; window.execFlow = execFlow; window.saveUser = saveUser; window.loadUser = loadUser; window.clearUsers = clearUsers; window.refreshAppIds = refreshAppIds;
+        window.createUser = createUser; window.generateToken = generateToken; window.refreshFlowKeys = refreshFlowKeys; window.execFlow = execFlow; window.saveUser = saveUser; window.loadUser = loadUser; window.clearUsers = clearUsers; window.refreshAppIds = refreshAppIds; window.loadSupabaseUsers = loadSupabaseUsers; window.pickSupabaseUser = pickSupabaseUser; window.saveAdminKey = saveAdminKey;
         // Persist token on manual edit
         document.getElementById('token').addEventListener('change', (e)=>{ const v = e.target.value.trim(); if(v) try{ saveCurrentToken(v); }catch(_){ } });
         // Auto refresh flow keys on app change and persist selection
         document.getElementById('app').addEventListener('change', async ()=>{ try{ localStorage.setItem('flowstarter_current_app', document.getElementById('app').value.trim()); }catch(_){ } await refreshFlowKeys(); });
 
         // Load token from storage, then refresh IDs and auto-select stored app
-        loadCurrentToken();
+        loadCurrentToken(); loadAdminKey();
         refreshSavedUsers(); refreshAppIds();
       });
     </script>
@@ -440,6 +504,11 @@ async def e2e_run() -> Dict[str, Any]:
     from app.services.pricing_service import AdvancedPricingSystem as PricingService
     config_path = os.environ.get("PRICING_CONFIG_FILE", "data/config/pricing_config.json")
     pricing = PricingService(config_file=config_path)
+    try:
+        # Carica pricing 'default' da Supabase per leggere i crediti di signup
+        await pricing._load_from_supabase_async("default")
+    except Exception:
+        pass
     initial_credits = float(getattr(pricing.config, "signup_initial_credits", 0.0) or 0.0)
     
     headers_rw = {"apikey": service_key, "Authorization": f"Bearer {service_key}", "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates,return=representation"}

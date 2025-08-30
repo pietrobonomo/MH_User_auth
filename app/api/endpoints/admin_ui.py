@@ -241,10 +241,6 @@ async def business_dashboard() -> str:
         <label>Signup Initial Credits</label>
         <input id=\"signup_initial\" type=\"number\" step=\"0.01\"/>
       </div>
-      <div>
-        <label>Minimum Affordability Credits</label>
-        <input id=\"min_affordability\" type=\"number\" step=\"0.01\"/>
-      </div>
     </div>
 
     <h3>Fixed Monthly Costs</h3>
@@ -424,6 +420,76 @@ async def business_dashboard() -> str:
         kpiEl.innerHTML = kpi.map(k=>`<div style="flex:1 1 140px;border:1px solid #eee;border-radius:8px;padding:12px"><div class=\"muted\">${k.label}</div><div style=\"font-size:20px;font-weight:600\">${k.value}</div></div>`).join('');
         document.getElementById('sim_out').innerHTML = `<h3>Simulazione</h3><pre>${JSON.stringify(out, null, 2)}</pre>`;
       }
+
+      // =============================
+      // Minimum Affordability per App
+      // =============================
+      const perAppCache = {}; // app_id -> full pricing cfg
+
+      async function loadAppIds(){
+        try{
+          const base = getBase();
+          const headers = authHeaders();
+          const r = await fetch(`${base}/core/v1/admin/app-ids`, { headers });
+          const data = await r.json();
+          const appIds = Array.isArray(data) ? data : (Array.isArray(data.app_ids) ? data.app_ids : []);
+          await renderAffordTable(appIds);
+        }catch(e){
+          alert('Errore caricamento app ids');
+        }
+      }
+
+      async function renderAffordTable(appIds){
+        const containerId = 'afford_apps_container';
+        let el = document.getElementById(containerId);
+        if(!el){
+          el = document.createElement('div');
+          el.id = containerId;
+          document.body.appendChild(el);
+        }
+        el.innerHTML = `
+          <h2>Minimum Affordability per App</h2>
+          <div class="row"><button id="btn_save_afford">Salva tutti</button></div>
+          <table id="afford_table"><thead><tr><th>App ID</th><th>Min Affordability Credits</th></tr></thead><tbody></tbody></table>
+        `;
+        await loadAffordConfigsForApps(appIds);
+        document.getElementById('btn_save_afford').addEventListener('click', saveAffordPerApp);
+      }
+
+      async function loadAffordConfigsForApps(appIds){
+        const base = getBase(); const headers = authHeaders();
+        const tbody = document.querySelector('#afford_table tbody');
+        tbody.innerHTML = '';
+        for(const appId of appIds){
+          try{
+            const r = await fetch(`${base}/core/v1/admin/pricing/config?app_id=${encodeURIComponent(appId)}`, { headers });
+            const cfg = await r.json();
+            perAppCache[appId] = cfg;
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td>${appId}</td><td><input data-app="${appId}" type="number" step="0.01" value="${cfg.minimum_affordability_credits ?? 0}"/></td>`;
+            tbody.appendChild(tr);
+          }catch(e){
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td>${appId}</td><td><input data-app="${appId}" type="number" step="0.01" value="0"/></td>`;
+            tbody.appendChild(tr);
+          }
+        }
+      }
+
+      async function saveAffordPerApp(){
+        const base = getBase(); const headers = authHeaders(); headers['Content-Type'] = 'application/json';
+        const inputs = Array.from(document.querySelectorAll('#afford_table tbody input[data-app]'));
+        for(const inp of inputs){
+          const appId = inp.getAttribute('data-app');
+          const v = parseFloat(inp.value) || 0;
+          const cfg = Object.assign({}, perAppCache[appId] || {});
+          cfg.minimum_affordability_credits = v;
+          try{
+            await fetch(`${base}/core/v1/admin/pricing/config?app_id=${encodeURIComponent(appId)}`, { method:'PUT', headers, body: JSON.stringify(cfg) });
+          }catch(e){ /* ignore single failure */ }
+        }
+        alert('✅ Salvato');
+      }
       // Proiezioni
       function getOpsTotal(){ const mau = parseFloat(document.getElementById('mau').value)||0; const ops = parseFloat(document.getElementById('ops_per_user').value)||0; return Math.max(0, Math.floor(mau*ops)); }
       function setMixRows(keys){ const tbody = document.querySelector('#mix_table tbody'); tbody.innerHTML=''; (keys||[]).forEach(k=> addMixRow(k, 0)); }
@@ -512,6 +578,8 @@ async def business_dashboard() -> str:
       try{ const t = localStorage.getItem('flowstarter_last_token'); if(t) document.getElementById('token').value = t; }catch(_){ }
       document.getElementById('token').addEventListener('change', (e)=>{ try{ localStorage.setItem('flowstarter_last_token', e.target.value.trim()); }catch(_){ } });
       loadConfig();
+      // Aggiungi sezione per-app dopo il caricamento pagina
+      loadAppIds();
     </script>
   </body>
 </html>
