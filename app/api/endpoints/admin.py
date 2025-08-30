@@ -7,6 +7,7 @@ import os
 import httpx
 
 from app.adapters.auth_supabase import SupabaseAuthBackend
+from app.services.openrouter_provisioning import OpenRouterProvisioningService
 
 
 router = APIRouter()
@@ -22,7 +23,7 @@ class FlowConfigUpsert(BaseModel):
 auth_backend = SupabaseAuthBackend()
 
 
-@router.get("/admin/flow-configs")
+@router.get("/flow-configs")
 async def get_flow_config(
     app_id: str,
     flow_key: str,
@@ -80,7 +81,7 @@ async def get_flow_config(
     return {"found": True, "config": row}
 
 
-@router.get("/admin/flow-keys")
+@router.get("/flow-keys")
 async def list_flow_keys(
     app_id: str,
     Authorization: Optional[str] = Header(default=None),
@@ -117,7 +118,41 @@ async def list_flow_keys(
     return {"app_id": app_id, "flow_keys": keys}
 
 
-@router.post("/admin/flow-configs")
+@router.get("/app-ids")
+async def list_app_ids(
+    Authorization: Optional[str] = Header(default=None),
+    X_Admin_Key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
+) -> Dict[str, Any]:
+    """Ritorna una lista di app_id unici presenti in flow_configs."""
+    core_admin_key = os.environ.get("CORE_ADMIN_KEY")
+    if not (X_Admin_Key and core_admin_key and X_Admin_Key == core_admin_key):
+        if not Authorization:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
+        token = Authorization.replace("Bearer ", "")
+        await auth_backend.get_current_user(token)
+
+    supabase_url = os.environ.get("SUPABASE_URL")
+    service_key = os.environ.get("SUPABASE_SERVICE_KEY")
+    if not supabase_url or not service_key:
+        raise HTTPException(status_code=500, detail="Supabase non configurato")
+
+    headers = {
+        "apikey": service_key,
+        "Authorization": f"Bearer {service_key}",
+        "Accept": "application/json",
+    }
+    async with httpx.AsyncClient(timeout=10) as client:
+        url = f"{supabase_url}/rest/v1/flow_configs?select=app_id"
+        resp = await client.get(url, headers=headers)
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        rows = resp.json()
+    
+    app_ids = sorted({r.get("app_id") for r in rows if isinstance(r, dict) and r.get("app_id")})
+    return {"app_ids": app_ids}
+
+
+@router.post("/flow-configs")
 async def upsert_flow_config(
     payload: FlowConfigUpsert,
     Authorization: Optional[str] = Header(default=None),
@@ -163,7 +198,7 @@ class GenerateTokenRequest(BaseModel):
     password: str
 
 
-@router.post("/admin/generate-token")
+@router.post("/generate-token")
 async def generate_token(req: GenerateTokenRequest) -> Dict[str, Any]:
     """Genera un access_token Supabase via password grant (usa ANON KEY)."""
     supabase_url = os.environ.get("SUPABASE_URL")
@@ -184,5 +219,60 @@ async def generate_token(req: GenerateTokenRequest) -> Dict[str, Any]:
     if not token:
         raise HTTPException(status_code=500, detail="Token non ottenuto")
     return {"access_token": token}
+
+
+@router.post("/provision-openrouter")
+async def provision_openrouter_for_user(
+    Authorization: Optional[str] = Header(default=None),
+    X_Admin_Key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
+) -> Dict[str, Any]:
+    """
+    Provisioning OpenRouter per l'utente autenticato.
+    Replica la logica di InsightDesk per creare una chiave OpenRouter.
+    """
+    # Admin key bypass
+    core_admin_key = os.environ.get("CORE_ADMIN_KEY")
+    user_info = None
+    
+    if X_Admin_Key and core_admin_key and X_Admin_Key == core_admin_key:
+        # Admin mode - richiede user_id e email nei query params
+        raise HTTPException(status_code=400, detail="Admin mode non implementato - usa token utente")
+    else:
+        if not Authorization:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
+        token = Authorization.replace("Bearer ", "")
+        user_info = await auth_backend.get_current_user(token)
+
+    user_id = user_info["user_id"]
+    user_email = user_info["email"]
+    
+    try:
+        # Inizializza servizio provisioning
+        provisioning_service = OpenRouterProvisioningService()
+        
+        # Crea chiave OpenRouter per l'utente
+        result = await provisioning_service.create_user_key(
+            user_id=user_id,
+            user_email=user_email
+        )
+        
+        return {
+            "status": "success",
+            "message": f"Provisioning OpenRouter completato per {user_email}",
+            "user_id": user_id,
+            "user_email": user_email,
+            "key_info": {
+                "key_name": result["key_name"],
+                "limit": result["limit"],
+                "status": result["status"],
+                "api_key_preview": result["api_key"][:20] + "..." if result.get("api_key") else None
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Errore provisioning OpenRouter: {str(e)}"
+        )
 
 

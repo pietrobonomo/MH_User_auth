@@ -1,0 +1,37 @@
+{
+  "monthly_revenue_target_usd": 10000.0,
+  "fixed_monthly_costs_usd": [
+    {
+      "name": "Infrastructure (Railway, Vercel)",
+      "cost_usd": 50.0
+    },
+    {
+      "name": "Payment Processor (Stripe/Lemon)",
+      "cost_usd": 50.0
+    },
+    {
+      "name": "Business & Marketing",
+      "cost_usd": 2500.0
+    },
+    {
+      "name": "Support & Maintenance",
+      "cost_usd": 1000.0
+    },
+    {
+      "name": "Legal & Accounting",
+      "cost_usd": 200.0
+    },
+    {
+      "name": "development tools",
+      "cost_usd": 200.0
+    }
+  ],
+  "usd_to_credits": 100.0,
+  "target_margin_multiplier": 2.5,
+  "flow_costs_usd": {
+    "X-post": 0.001754
+  },
+  "minimum_operation_cost_credits": 0.01,
+  "signup_initial_credits": 50.0,
+  "minimum_affordability_credits": 0.0
+}

@@ -33,10 +33,12 @@ class FlowiseAdapter:
         # Ottieni chiave utente e nodi
         key_service = OpenRouterUserKeysService()
         user_api_key = await key_service.get_user_api_key(user_id)
-        
-        # Fallback a variabile d'ambiente per test (come InsightDesk)
+
+        # NIENTE FALLBACK: se manca la chiave utente, errore esplicito
         if not user_api_key:
-            user_api_key = os.environ.get("FALLBACK_OPENROUTER_KEY") or os.environ.get("OPENROUTER_API_KEY")
+            raise RuntimeError(
+                "Chiave OpenRouter utente mancante: provisioning obbligatorio prima dell'esecuzione del flow"
+            )
 
         # Estrai node_names dal payload
         node_list = []
@@ -53,14 +55,29 @@ class FlowiseAdapter:
             enriched = _inject_agent_v2_keys_simple(enriched, node_list, user_api_key)
         
         url = f"{base_url.rstrip('/')}/{flow_id}"
-        
-        async with httpx.AsyncClient(timeout=120) as client:
-            resp = await client.post(url, headers=headers, json=enriched)
-            if resp.status_code >= 400:
-                logging.error(f"❌ Flowise error {resp.status_code}: {resp.text}")
-                raise RuntimeError(f"Flowise error {resp.status_code}: {resp.text}")
+
+        # Aumenta timeout e aggiungi logging dettagliato
+        timeout_seconds = 600.0  # Aumentato a 10 minuti
+        try:
+            async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+                logging.info(f"🚀 Chiamando Flowise: POST {url} con timeout {timeout_seconds}s")
+                resp = await client.post(url, headers=headers, json=enriched)
+            
+            resp.raise_for_status() # Lancia eccezione per status >= 400
+            
             result = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {"text": resp.text}
-        return result, {"cost_credits": None}
+            logging.info(f"✅ Risposta da Flowise ricevuta (status {resp.status_code})")
+            return result, {"cost_credits": None}
+
+        except httpx.TimeoutException as e:
+            logging.error(f"❌ Timeout Flowise dopo {timeout_seconds}s per {url}: {e}")
+            raise RuntimeError(f"Flowise timeout after {timeout_seconds}s")
+        except httpx.HTTPStatusError as e:
+            logging.error(f"❌ Errore HTTP da Flowise per {url}: {e.response.status_code} - {e.response.text}")
+            raise RuntimeError(f"Flowise error {e.response.status_code}: {e.response.text}")
+        except Exception as e:
+            logging.error(f"❌ Errore generico chiamata a Flowise per {url}: {e}", exc_info=True)
+            raise RuntimeError(f"Errore imprevisto durante la chiamata a Flowise: {e}")
 
 
 def _inject_openrouter_identity(payload: Dict[str, Any], user_id: str, key_name: Optional[str]) -> Dict[str, Any]:

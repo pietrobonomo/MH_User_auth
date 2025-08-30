@@ -32,6 +32,44 @@ Vedi `.env.example`.
 - Flowise: `FLOWISE_BASE_URL`, `FLOWISE_API_KEY`
 - (Opzionale single-tenant) `NL_FLOW_*_ID`, `FLOWISE_NODE_MAP_JSON`
 
+## Pricing & Affordability
+
+- Config file: `data/config/pricing_config.json` gestito dagli endpoint `GET/PUT /core/v1/admin/pricing/config`.
+- Campi principali:
+  - `usd_to_credits`: conversione USD→crediti
+  - `target_margin_multiplier`: margine target
+  - `minimum_operation_cost_credits`: costo minimo per singola operazione
+  - `signup_initial_credits`: crediti iniziali assegnati al nuovo utente (usati in fase di provisioning profilo)
+  - `minimum_affordability_credits`: soglia minima globale necessaria per sbloccare le operazioni
+
+### Affordability pre-check e blocco (HTTP 402)
+
+- In `POST /core/v1/providers/flowise/execute` viene effettuato un pre-check:
+  - `estimated_cost = pricing.calculate_operation_cost_credits("flowise_execute", {flow_key|flow_id})`
+  - `required = max(estimated_cost, minimum_affordability_credits)`
+  - Se il saldo (`profiles.credits`) è inferiore a `required`, la richiesta viene bloccata con `HTTP 402` e payload:
+    ```json
+    {
+      "error_type": "insufficient_credits",
+      "can_afford": false,
+      "estimated_cost": 0.25,
+      "minimum_required": 1.0,
+      "available_credits": 0.5,
+      "shortage": 0.5,
+      "flow_key": "...",
+      "flow_id": "..."
+    }
+    ```
+  - Headers restituiti: `X-Estimated-Cost-Credits`, `X-Min-Affordability`, `X-Available-Credits`.
+
+### Detrazione crediti su delta OpenRouter
+
+- Dopo l'esecuzione del flow, il Core misura il delta di spesa OpenRouter e addebita i crediti reali:
+  - Async (default): ritorna subito il risultato e addebita in background.
+  - Sync: attende il delta e addebita prima della risposta.
+- Conversione: `actual_credits = delta_usd * pricing.config.final_credit_multiplier`
+- Addebito via RPC `debit_user_credits` su Supabase (idempotency key supportata).
+
 ## Modalità multi-tenant
 
 - Tabella Supabase `flow_configs(app_id, flow_key, flow_id, node_names JSON)` (già prevista nello schema SQL)

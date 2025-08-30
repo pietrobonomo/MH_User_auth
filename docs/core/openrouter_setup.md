@@ -38,11 +38,17 @@ Risposta tipica:
 }
 ```
 
-## 4) Pricing e addebito crediti
-- La stima in crediti è calcolata dal `PricingEngine` (semplice per ora):
-  - `PRICING_DEFAULT_CREDITS_PER_CALL` (default 1.0)
-  - `PRICING_MODEL_MAP_JSON` (es: `{ "openrouter/model": 2.0 }`)
-- Il ledger addebita i crediti prima della chiamata (importo stimato) via RPC Supabase `debit_user_credits`.
+## 4) Pricing, Affordability e addebito crediti
+- La configurazione è in `data/config/pricing_config.json` ed è esposta via `GET/PUT /core/v1/admin/pricing/config`.
+- Campi rilevanti:
+  - `usd_to_credits`, `target_margin_multiplier`, `minimum_operation_cost_credits`
+  - `signup_initial_credits`: crediti iniziali assegnati ai nuovi utenti
+  - `minimum_affordability_credits`: soglia minima per sbloccare le operazioni
+- Pre-check affordability (HTTP 402) su `POST /core/v1/providers/flowise/execute`:
+  - `required = max(estimated_cost, minimum_affordability_credits)`
+  - Headers di risposta in errore: `X-Estimated-Cost-Credits`, `X-Min-Affordability`, `X-Available-Credits`
+- L'addebito reale avviene misurando il delta OpenRouter post-esecuzione e calcolando:
+  `actual_credits = delta_usd * final_credit_multiplier`. L'addebito usa la RPC `debit_user_credits`.
 
 ## 5) Errori comuni
 - 401/403: controlla `Authorization: Bearer <token_supabase>` e la validazione JWKS (o `SUPABASE_VERIFY_DISABLED=1` in dev)

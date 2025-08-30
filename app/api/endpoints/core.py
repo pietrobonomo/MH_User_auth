@@ -1,11 +1,17 @@
-from fastapi import APIRouter, Header, HTTPException, status
+from fastapi import APIRouter, Header, HTTPException, status, Query
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 from app.adapters.auth_supabase import SupabaseAuthBackend
-from app.adapters.credits_supabase import SupabaseCreditsLedger
+from app.services.credits_supabase import SupabaseCreditsLedger
 from app.adapters.provider_openrouter import OpenRouterAdapter
-from app.core.pricing_simple import SimplePricingEngine
+from app.services.pricing_service import AdvancedPricingSystem as PricingService
 from app.adapters.provider_flowise import FlowiseAdapter
+from app.services.openrouter_user_keys import OpenRouterUserKeysService
+from app.services.openrouter_usage_service import OpenRouterUsageService
+import logging
+import os
+import asyncio
 
 router = APIRouter()
 
@@ -30,22 +36,19 @@ class EstimateRequest(BaseModel):
 auth_backend = SupabaseAuthBackend()
 credits_ledger = SupabaseCreditsLedger()
 openrouter = OpenRouterAdapter()
-pricing = SimplePricingEngine()
+pricing = PricingService(config_file=os.environ.get("PRICING_CONFIG_FILE", "data/config/pricing_config.json"))
 flowise = FlowiseAdapter()
+
+# Lazy providers per evitare errori di import se env mancanti
+
+def get_user_keys_service() -> OpenRouterUserKeysService:
+    return OpenRouterUserKeysService()
+
+def get_usage_service() -> OpenRouterUsageService:
+    return OpenRouterUsageService()
 
 @router.get("/users/me")
 async def get_me(Authorization: Optional[str] = Header(default=None)) -> Dict[str, Any]:
-    """Ritorna informazioni basilari sull'utente autenticato.
-
-    Args:
-        Authorization: Header bearer token.
-
-    Returns:
-        Dizionario con info utente minime.
-
-    Raises:
-        HTTPException: 401 se token assente.
-    """
     if not Authorization:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
     token = Authorization.replace("Bearer ", "")
@@ -54,14 +57,6 @@ async def get_me(Authorization: Optional[str] = Header(default=None)) -> Dict[st
 
 @router.get("/credits/balance")
 async def get_balance(Authorization: Optional[str] = Header(default=None)) -> Dict[str, Any]:
-    """Ritorna il saldo crediti dell'utente.
-
-    Args:
-        Authorization: Header bearer token.
-
-    Returns:
-        Saldo in crediti (placeholder).
-    """
     if not Authorization:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
     token = Authorization.replace("Bearer ", "")
@@ -75,7 +70,7 @@ async def estimate_credits(payload: EstimateRequest, Authorization: Optional[str
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
     token = Authorization.replace("Bearer ", "")
     _ = await auth_backend.get_current_user(token)
-    est = pricing.estimate_credits(payload.operation_type, payload.context)
+    est = pricing.calculate_operation_cost_credits(payload.operation_type, payload.context)
     return {"estimated_credits": est}
 
 @router.post("/providers/openrouter/chat", response_model=ChatResponse)
@@ -84,25 +79,13 @@ async def openrouter_chat(
     Authorization: Optional[str] = Header(default=None),
     Idempotency_Key: Optional[str] = Header(default=None, alias="Idempotency-Key")
 ) -> ChatResponse:
-    """Proxy chat verso OpenRouter con addebito crediti (stub).
-
-    Nota: Questo è uno scheletro senza chiamata esterna. Serve per validare integrazione.
-
-    Args:
-        payload: Richiesta chat.
-        Authorization: Header bearer token.
-
-    Returns:
-        ChatResponse con risposta fittizia e usage placeholder.
-    """
     if not Authorization:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
 
     token = Authorization.replace("Bearer ", "")
     user = await auth_backend.get_current_user(token)
 
-    # Stima costi e addebito reale
-    est = pricing.estimate_credits("openrouter_chat", {"model": payload.model})
+    est = pricing.calculate_operation_cost_credits("openrouter_chat", {"model": payload.model})
     debit_res = await credits_ledger.debit(user_id=user["id"], amount=est, reason="openrouter_chat", idempotency_key=Idempotency_Key)
     response, usage = await openrouter.chat(user_id=user["id"], model=payload.model, messages=[m.model_dump() for m in payload.messages], options=payload.options)
     txn_id = debit_res.get("transaction_id") if isinstance(debit_res, dict) else None
@@ -128,7 +111,6 @@ async def flowise_execute(
     token = Authorization.replace("Bearer ", "")
     user = await auth_backend.get_current_user(token)
 
-    # Determina flow_id: se non fornito ma c'è flow_key, risolvi da Supabase; altrimenti usa quello passato
     flow_id = payload.flow_id
     if not flow_id and payload.flow_key:
         from app.services.flowise_config_service import FlowiseConfigService
@@ -136,19 +118,207 @@ async def flowise_execute(
         if not cfg:
             raise HTTPException(status_code=404, detail=f"flow_config non trovata per app_id={X_App_Id or ''} flow_key={payload.flow_key}")
         flow_id = cfg.get("flow_id")
-        # Se node_names non passati, prova da config
         if not payload.node_names and isinstance(cfg.get("node_names"), list):
             payload.node_names = [str(n) for n in cfg["node_names"]]
     if not flow_id:
         raise HTTPException(status_code=400, detail="flow_id o flow_key obbligatorio")
 
-    # Rifiuta placeholder non valido
-    if isinstance(flow_id, str) and flow_id.strip().lower() == "demo-flow":
-        raise HTTPException(status_code=400, detail="flow_id 'demo-flow' non valido")
+    data_for_adapter: Dict[str, Any] = {**payload.data}
+    if payload.node_names:
+        data_for_adapter["_node_names"] = payload.node_names
 
-    # Stima e addebito
-    est = pricing.estimate_credits("flowise_execute", {"flow_id": flow_id})
-    _ = await credits_ledger.debit(user_id=user["id"], amount=est, reason="flowise_execute", idempotency_key=Idempotency_Key)
+    pricing_breakdown = pricing.calculate_flow_pricing(payload.flow_key, flow_id)
 
-    result, usage = await flowise.execute(user_id=user["id"], flow_id=flow_id, data={**payload.data, **({} if not payload.node_names else {"_node_names": payload.node_names})})
-    return {"result": result, "usage": usage}
+    # Affordability pre-check prima di eseguire il flow
+    try:
+        estimated_cost = pricing.calculate_operation_cost_credits("flowise_execute", {"flow_key": payload.flow_key, "flow_id": flow_id})
+        # Applica gate minimo a livello app
+        min_gate = getattr(pricing.config, "minimum_affordability_credits", 0.0) or 0.0
+        required = max(estimated_cost, float(min_gate))
+        available = await credits_ledger.get_balance(user["id"])
+        if available < required:
+            detail = {
+                "error_type": "insufficient_credits",
+                "can_afford": False,
+                "estimated_cost": float(estimated_cost),
+                "minimum_required": float(required),
+                "available_credits": float(available),
+                "shortage": float(max(0.0, required - available)),
+                "flow_key": payload.flow_key,
+                "flow_id": flow_id,
+            }
+            headers = {
+                "X-Estimated-Cost-Credits": str(estimated_cost),
+                "X-Min-Affordability": str(min_gate),
+                "X-Available-Credits": str(available),
+            }
+            raise HTTPException(status_code=402, detail=detail, headers=headers)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.warning(f"Affordability pre-check non disponibile: {e}")
+
+    # Usage prima/dopo obbligatorio (no fallback)
+    user_api_key = await get_user_keys_service().get_user_api_key(user["id"])
+    usage_before = await get_usage_service().get_usage_usd(user_api_key)
+
+    try:
+        result, usage = await flowise.execute(
+            user_id=user["id"], 
+            flow_id=flow_id, 
+            data=data_for_adapter
+        )
+    except Exception as e:
+        logging.error(f"❌ Errore esecuzione Flowise Adapter: {e}", exc_info=True)
+        raise HTTPException(status_code=502, detail=f"Errore durante l'esecuzione del flow: {e}")
+
+    # Misura il delta usage via OpenRouter (fonte verità), come InsightDesk
+    # FAST RETURN: ritorna subito il risultato e calcola/debita in background
+    fast_return = os.environ.get("FAST_RETURN_CREDITS", "true").lower() in ("1", "true", "yes")
+
+    async def _process_pricing_async() -> None:
+        try:
+            # Parametri più ampi per catturare sottomodelli
+            delta, ub, ua = await get_usage_service().measure_delta_usd(
+                user_api_key,
+                pre_usage_usd=usage_before,
+                warmup_seconds=int(os.environ.get("OR_WARMUP_SECONDS", "4")),
+                attempts=int(os.environ.get("OR_ATTEMPTS", "30")),
+                interval_seconds=int(os.environ.get("OR_INTERVAL", "2")),
+            )
+            if delta is None or (ua is not None and ub is not None and ua < ub):
+                logging.warning("OpenRouter delta non disponibile: ub=%s ua=%s", ub, ua)
+                return
+            actual_usd = round(delta, 6)
+            actual_credits = round(delta * pricing.config.final_credit_multiplier, 2)
+            if actual_credits <= 0:
+                return
+            await credits_ledger.debit(
+                user_id=user["id"],
+                amount=actual_credits,
+                reason="flowise_execute",
+                idempotency_key=Idempotency_Key,
+            )
+        except Exception as bg_e:
+            logging.warning("Async pricing/debit fallito: %s", bg_e)
+
+    if fast_return:
+        try:
+            asyncio.create_task(_process_pricing_async())
+        except Exception as e:
+            logging.warning("Scheduling async pricing fallito: %s", e)
+        return {
+            "payload_sent": data_for_adapter,
+            "result": result,
+            "pricing": {
+                **pricing_breakdown,
+                "status": "pending",
+                "mode": "async",
+                "usage_before_usd": usage_before,
+            },
+            "flow": {"flow_id": flow_id, "flow_key": payload.flow_key}
+        }
+    else:
+        # Modalità sincrona (come prima)
+        delta_usd, usage_b, usage_a = await get_usage_service().measure_delta_usd(
+            user_api_key,
+            pre_usage_usd=usage_before,
+            warmup_seconds=2,
+            attempts=15,
+            interval_seconds=1,
+        )
+
+        if delta_usd is None or (usage_a is not None and usage_b is not None and usage_a < usage_b):
+            raise HTTPException(status_code=502, detail="Impossibile determinare il costo reale da OpenRouter per questa richiesta")
+
+        actual_cost_usd = round(delta_usd, 6)
+        actual_cost_credits = round(delta_usd * pricing.config.final_credit_multiplier, 2)
+        usd_multiplier = pricing.config.total_overhead_multiplier * pricing.config.target_margin_multiplier
+        public_price_usd = round(actual_cost_usd * usd_multiplier, 6)
+        total_multiplier_percent = round(usd_multiplier * 100.0, 3)
+        markup_percent = round((usd_multiplier - 1.0) * 100.0, 3)
+        try:
+            debit_details = await credits_ledger.debit(
+                user_id=user["id"], 
+                amount=actual_cost_credits, 
+                reason="flowise_execute", 
+                idempotency_key=Idempotency_Key
+            )
+        except Exception as e:
+            logging.error(f"⚠️ Errore gestione crediti per user {user['id']}: {e}", exc_info=True)
+            raise HTTPException(status_code=502, detail="Addebito crediti fallito")
+
+        return {
+            "payload_sent": data_for_adapter,
+            "result": result,
+            "pricing": {
+                **pricing_breakdown,
+                "actual_cost_credits": actual_cost_credits,
+                "actual_cost_usd": actual_cost_usd,
+                "usage_before_usd": usage_b,
+                "usage_after_usd": usage_a,
+                "usd_multiplier": round(usd_multiplier, 6),
+                "total_multiplier_percent": total_multiplier_percent,
+                "markup_percent": markup_percent,
+                "public_price_usd": public_price_usd,
+                "credits_to_debit": actual_cost_credits,
+            },
+            "debit": debit_details,
+            "flow": {"flow_id": flow_id, "flow_key": payload.flow_key}
+        }
+
+
+@router.get("/providers/flowise/pricing")
+async def flowise_pricing(
+    Authorization: Optional[str] = Header(default=None),
+    usage_before_usd: Optional[float] = Query(default=None)
+) -> Dict[str, Any]:
+    """Rileva il costo reale OpenRouter (delta) senza addebitare.
+
+    Args:
+        usage_before_usd: opzionale; se fornito, usato come baseline per il delta.
+    """
+    if not Authorization:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
+    token = Authorization.replace("Bearer ", "")
+    user = await auth_backend.get_current_user(token)
+
+    user_api_key = await get_user_keys_service().get_user_api_key(user["id"])
+    # Se non fornito, leggi la baseline adesso
+    if usage_before_usd is None:
+        usage_before_usd = await get_usage_service().get_usage_usd(user_api_key)
+
+    delta_usd, usage_b, usage_a = await get_usage_service().measure_delta_usd(
+        user_api_key,
+        pre_usage_usd=usage_before_usd,
+        warmup_seconds=int(os.environ.get("OR_WARMUP_SECONDS", "4")),
+        attempts=int(os.environ.get("OR_ATTEMPTS", "30")),
+        interval_seconds=int(os.environ.get("OR_INTERVAL", "2")),
+    )
+
+    if delta_usd is None or (usage_a is not None and usage_b is not None and usage_a < usage_b):
+        return {
+            "status": "unavailable",
+            "usage_before_usd": usage_b,
+            "usage_after_usd": usage_a,
+        }
+
+    actual_cost_usd = round(delta_usd, 6)
+    actual_cost_credits = round(delta_usd * pricing.config.final_credit_multiplier, 2)
+    usd_multiplier = pricing.config.total_overhead_multiplier * pricing.config.target_margin_multiplier
+    public_price_usd = round(actual_cost_usd * usd_multiplier, 6)
+    total_multiplier_percent = round(usd_multiplier * 100.0, 3)
+    markup_percent = round((usd_multiplier - 1.0) * 100.0, 3)
+    return {
+        "status": "ready",
+        "actual_cost_usd": actual_cost_usd,
+        "actual_cost_credits": actual_cost_credits,
+        "usage_before_usd": usage_b,
+        "usage_after_usd": usage_a,
+        "final_credit_multiplier": pricing.config.final_credit_multiplier,
+        "usd_multiplier": round(usd_multiplier, 6),
+        "total_multiplier_percent": total_multiplier_percent,
+        "markup_percent": markup_percent,
+        "public_price_usd": public_price_usd,
+        "credits_to_debit": actual_cost_credits,
+    }
