@@ -174,12 +174,14 @@ async def flowise_execute(
     # CRITICO: ricarica config da Supabase prima del check (default-first)
     try:
         fresh_config = await pricing._load_from_supabase_async(app_id_for_threshold)
-        if fresh_config:
-            per_app_map = getattr(fresh_config, "minimum_affordability_per_app", {}) or {}
+        # Sorgente primaria: flow_costs_usd come affordability per app (chiave = app_id).
+        # La mappa legacy minimum_affordability_per_app è tollerata in lettura ma non più scritta.
+        if fresh_config and isinstance(getattr(fresh_config, "flow_costs_usd", None), dict):
+            primary_map = getattr(fresh_config, "flow_costs_usd", {}) or {}
         else:
-            per_app_map = getattr(pricing.config, "minimum_affordability_per_app", {}) or {}
-        logging.warning(f"🔍 PCHECK: map_keys={list(per_app_map.keys())} app={app_id_for_threshold}")
-        min_gate = float(per_app_map.get(app_id_for_threshold, 0.0) or 0.0)
+            primary_map = getattr(pricing.config, "flow_costs_usd", {}) or {}
+        min_gate = float(primary_map.get(app_id_for_threshold, 0.0) or 0.0)
+        logging.warning(f"🔍 PCHECK: keys={list(primary_map.keys())} app={app_id_for_threshold} threshold={min_gate}")
         required = float(min_gate)
         available = await credits_ledger.get_balance(user["id"])
         logging.warning(f"🔍 PCHECK: app={app_id_for_threshold} threshold={min_gate} available={available} required={required}")

@@ -8,6 +8,9 @@ import httpx
 
 from app.adapters.auth_supabase import SupabaseAuthBackend
 from app.services.openrouter_provisioning import OpenRouterProvisioningService
+from app.services.billing_config_service import BillingConfigService
+from app.services.credentials_manager import CredentialsManager
+from app.services.payments_service import PaymentsService
 
 
 router = APIRouter()
@@ -276,7 +279,6 @@ async def provision_openrouter_for_user(
         )
 
 
-
 @router.get("/users")
 async def list_users(
     Authorization: Optional[str] = Header(default=None),
@@ -330,4 +332,156 @@ async def list_users(
                 "created_at": r.get("created_at"),
             })
     return {"count": len(users), "users": users}
+
+
+# =============================
+# Billing Config (Admin)
+# =============================
+class BillingConfigAPI(BaseModel):
+    provider: str = Field(default="lemonsqueezy")
+    lemonsqueezy: Optional[Dict[str, Any]] = None  # { store_id, webhook_secret }
+    plans: Optional[List[Dict[str, Any]]] = None   # [{ id, name, variant_id, price_usd, credits_per_month }]
+
+
+@router.get("/billing/config")
+async def get_billing_config(
+    Authorization: Optional[str] = Header(default=None),
+    X_Admin_Key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
+    app_id: Optional[str] = None
+) -> Dict[str, Any]:
+    if not (X_Admin_Key and X_Admin_Key == os.environ.get("CORE_ADMIN_KEY")):
+        if not Authorization:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
+    svc = BillingConfigService()
+    return await svc.get_config(app_id)
+
+
+@router.put("/billing/config")
+async def update_billing_config(
+    payload: BillingConfigAPI,
+    Authorization: Optional[str] = Header(default=None),
+    X_Admin_Key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
+    app_id: Optional[str] = None
+) -> Dict[str, Any]:
+    if not (X_Admin_Key and X_Admin_Key == os.environ.get("CORE_ADMIN_KEY")):
+        if not Authorization:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
+    svc = BillingConfigService()
+    return await svc.put_config(config=payload.model_dump(exclude_none=True), app_id=app_id)
+
+
+@router.post("/credentials/test")
+async def test_provider_connection(
+    provider: str,
+    Authorization: Optional[str] = Header(default=None),
+    X_Admin_Key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
+) -> Dict[str, Any]:
+    """Testa connessione al provider usando credentials criptate."""
+    if not (X_Admin_Key and X_Admin_Key == os.environ.get("CORE_ADMIN_KEY")):
+        if not Authorization:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
+    
+    credentials_mgr = CredentialsManager()
+    return await credentials_mgr.test_connection(provider)
+
+
+@router.post("/credentials/rotate")
+async def rotate_provider_key(
+    provider: str,
+    credential_key: str,
+    new_value: str,
+    Authorization: Optional[str] = Header(default=None),
+    X_Admin_Key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
+) -> Dict[str, Any]:
+    """Ruota una chiave provider specifica."""
+    if not (X_Admin_Key and X_Admin_Key == os.environ.get("CORE_ADMIN_KEY")):
+        if not Authorization:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
+    
+    credentials_mgr = CredentialsManager()
+    success = await credentials_mgr.set_credential(provider, credential_key, new_value)
+    if success:
+        credentials_mgr.clear_cache()  # Invalida cache
+        return {"status": "success", "message": f"Chiave {credential_key} aggiornata"}
+    return {"status": "error", "message": "Errore aggiornamento chiave"}
+@router.post("/billing/checkout")
+async def admin_generate_checkout(
+    user_id: str,
+    plan_id: str | None = None,
+    amount_usd: float | None = None,
+    Authorization: Optional[str] = Header(default=None),
+    X_Admin_Key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
+) -> Dict[str, Any]:
+    """Genera un checkout per un utente specifico (solo admin)."""
+    core_admin_key = os.environ.get("CORE_ADMIN_KEY")
+    if not (X_Admin_Key and core_admin_key and X_Admin_Key == core_admin_key):
+        if not Authorization:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token o X-Admin-Key mancante")
+
+    try:
+        payments = PaymentsService()
+        meta: Dict[str, Any] = {}
+        if plan_id:
+            meta["plan_id"] = plan_id
+
+        # Recupera email utente da Supabase per checkout_data
+        supabase_url = os.environ.get("SUPABASE_URL")
+        service_key = os.environ.get("SUPABASE_SERVICE_KEY")
+        if supabase_url and service_key:
+            headers = {"apikey": service_key, "Authorization": f"Bearer {service_key}", "Accept": "application/json"}
+            import httpx
+            async with httpx.AsyncClient(timeout=10) as client:
+                r = await client.get(f"{supabase_url}/rest/v1/profiles?id=eq.{user_id}&select=email", headers=headers)
+                if r.status_code == 200:
+                    rows = r.json() or []
+                    if rows:
+                        meta["customer_email"] = rows[0].get("email")
+
+        # Ottieni crediti dal piano se plan_id è specificato
+        credits = 0
+        if plan_id:
+            plans_result = await payments.get_plans()
+            plans = plans_result.get("plans", [])
+            for plan in plans:
+                if isinstance(plan, dict) and plan.get("id") == plan_id:
+                    credits = plan.get("credits") or plan.get("credits_per_month") or 0
+                    break
+        
+        result = await payments.create_checkout(user_id=user_id, credits=credits, amount_usd=amount_usd, metadata=meta)
+        return {"status": "ok", "checkout": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Errore generazione checkout: {e}")
+
+
+@router.get("/user-credits")
+async def admin_get_user_credits(
+    user_id: str,
+    Authorization: Optional[str] = Header(default=None),
+    X_Admin_Key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
+) -> Dict[str, Any]:
+    """Ritorna i crediti correnti del profilo utente (solo admin)."""
+    core_admin_key = os.environ.get("CORE_ADMIN_KEY")
+    if not (X_Admin_Key and core_admin_key and X_Admin_Key == core_admin_key):
+        if not Authorization:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token o X-Admin-Key mancante")
+
+    supabase_url = os.environ.get("SUPABASE_URL")
+    service_key = os.environ.get("SUPABASE_SERVICE_KEY")
+    if not supabase_url or not service_key:
+        raise HTTPException(status_code=500, detail="Supabase non configurato")
+
+    headers = {
+        "apikey": service_key,
+        "Authorization": f"Bearer {service_key}",
+        "Accept": "application/json",
+    }
+    import httpx
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.get(f"{supabase_url}/rest/v1/profiles?id=eq.{user_id}&select=id,email,credits", headers=headers)
+        if r.status_code != 200:
+            raise HTTPException(status_code=r.status_code, detail=r.text)
+        rows = r.json() or []
+        if not rows:
+            return {"found": False}
+        return {"found": True, "profile": rows[0]}
 

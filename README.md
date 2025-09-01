@@ -21,6 +21,9 @@ python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 5050
 - POST `/core/v1/credits/estimate`
 - POST `/core/v1/providers/openrouter/chat`
 - POST `/core/v1/providers/flowise/execute`
+- GET `/core/v1/billing/plans`
+- POST `/core/v1/billing/checkout`
+- POST `/core/v1/billing/webhook` (da configurare come endpoint di webhook del provider)
 
 ## Variabili d'ambiente
 
@@ -30,6 +33,7 @@ Vedi `.env.example`.
 - Pricing: `PRICING_DEFAULT_CREDITS_PER_CALL` (default: 1.0), `PRICING_MODEL_MAP_JSON`
 - OpenRouter: `OPENROUTER_BASE_URL`, `OPENROUTER_PROVISIONING_KEY`
 - Flowise: `FLOWISE_BASE_URL`, `FLOWISE_API_KEY`
+- Billing (LemonSqueezy): `LEMONSQUEEZY_API_KEY`, `LEMONSQUEEZY_SIGNING_SECRET`, `LEMONSQUEEZY_BYPASS_SIGNATURE` (solo dev), `BILLING_PROVIDER=lemonsqueezy`
 - (Opzionale single-tenant) `NL_FLOW_*_ID`, `FLOWISE_NODE_MAP_JSON`
 
 ## Pricing & Affordability
@@ -109,3 +113,4 @@ Vedi `.env.example`.
 ## Note
 - Verifica JWT via JWKS (se configurato) altrimenti decodifica senza verifica (solo dev)
 - Ledger crediti via REST (profiles.credits e RPC debit_user_credits)
+- Accredito via RPC `credit_user_credits` su pagamento riuscito

@@ -59,3 +59,25 @@ class ProviderAdapter(ABC):
         """Esegue una chat e ritorna (response, usage)."""
 
 
+
+class BillingProvider(ABC):
+    """Interfaccia per provider di pagamento.
+
+    Progetta metodi minimi comuni: checkout one-time, gestione subscription e validazione webhook.
+    """
+
+    @abstractmethod
+    async def create_checkout(self, user_id: str, credits: int, amount_usd: Optional[float] = None, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Crea un checkout (one-time) e ritorna URL o payload per redirect."""
+
+    @abstractmethod
+    async def get_plans(self) -> Dict[str, Any]:
+        """Ritorna lista piani/subscription disponibili (id, nome, credits/mese, prezzo)."""
+
+    @abstractmethod
+    def validate_webhook(self, body: bytes, signature: Optional[str]) -> bool:
+        """Valida la firma del webhook (può bypassare in dev)."""
+
+    @abstractmethod
+    def parse_webhook(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalizza payload in forma agnostica: { event, user_id, credits_to_add, amount_cents, provider_ids }."""

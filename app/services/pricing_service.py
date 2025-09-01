@@ -75,6 +75,22 @@ class PricingConfig:
     # Soglie minime di affordability per app: app_id -> credits richiesti
     minimum_affordability_per_app: Dict[str, float] = field(default_factory=dict)
 
+    # Rollout: parametri di business e scheduler
+    rollout_interval: str = "monthly"  # monthly|weekly|custom
+    rollout_credits_per_period: int = 0  # se >0 override dei crediti del piano
+    rollout_max_credits_rollover: int = 0  # 0 = nessun cap; >0 = cap saldo
+    rollout_proration: str = "none"  # none|prorata|cliff
+    rollout_percentage: float = 100.0  # soft rollout (0-100)
+    rollout_scheduler_enabled: bool = False
+    rollout_scheduler_time_utc: str = "03:00"  # HH:MM
+
+    # Sconti e pacchetti (business)
+    plan_discounts_percent: Dict[str, float] = field(default_factory=dict)  # plan_id -> percentuale sconto
+    signup_initial_credits_cost_usd: float = 0.0  # costo da considerare a P&L per crediti di benvenuto
+
+    # Revenue recognition
+    unused_credits_recognized_as_revenue: bool = True
+
 class AdvancedPricingSystem:
     """
     Sistema di pricing avanzato con configurazione dinamica per simulazioni di business.

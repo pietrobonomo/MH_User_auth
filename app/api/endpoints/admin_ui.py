@@ -2,6 +2,186 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
+import os
+import re
+
+
+def _load_unified_dashboard_html() -> str:
+    """Carica la Dashboard Unificata (HTML) direttamente dal documento sorgente.
+
+    Legge `docs/cursor_progettazione_di_una_dashboard_u.md` e
+    estrae l'ultima versione del blocco `return \"\"\" ... \"\"\"` relativo
+    all'endpoint `@router.get("/dashboard"...)`.
+
+    Returns:
+        HTML della dashboard unificata, oppure stringa vuota se non trovata.
+    """
+    try:
+        root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+        doc_path = os.path.join(root_dir, "docs", "cursor_progettazione_di_una_dashboard_u.md")
+        with open(doc_path, "r", encoding="utf-8") as f:
+            data = f.read()
+
+        anchor = '@router.get("/dashboard"'
+        start_anchor_idx = data.rfind(anchor)
+        if start_anchor_idx == -1:
+            return ""
+
+        ret_kw = 'return """'
+        ret_idx = data.find(ret_kw, start_anchor_idx)
+        if ret_idx == -1:
+            return ""
+
+        content_start = ret_idx + len(ret_kw)
+        # Cerca le triple quotes di chiusura all'inizio linea
+        end_idx = data.find('\n"""', content_start)
+        if end_idx == -1:
+            end_idx = data.find('"""', content_start)
+            if end_idx == -1:
+                return ""
+
+        html = data[content_start:end_idx]
+        # Rimuove eventuale newline iniziale
+        if html.startswith("\n"):
+            html = html[1:]
+        # Post-process: rimuovi colonna "Discount %"/"Sconto %" e relativa cella/JS
+        try:
+            # 1) Header tabella
+            html = re.sub(r"<th>\s*(Discount %|Sconto %)\s*</th>", "", html, flags=re.IGNORECASE)
+            # 2) Cella input con discount_percent o discount_percentage nei template righe
+            html = re.sub(r"<td>[^<]*<input[^>]*?(discount_percent|discount_percentage)[\s\S]*?</td>", "", html, flags=re.IGNORECASE)
+            # Variante: addDbPlanRow usa 'discount' come param/placeholder
+            html = re.sub(r"<td>\s*<input[^>]*placeholder=\"0\"[^>]*>\s*</td>", "", html)
+            # 3) Rimuovi la riga JS che legge/salva discount_percentage
+            html = re.sub(r"\s*discount_percentage\s*:\s*[^,]+,?\s*\n", "\n", html)
+            # 4) Aggiorna intestazione descrittiva (rimuovi menzione sconto)
+            html = html.replace("con sconto e rollout per-piano", "con rollout per-piano")
+            # 5) Inietta bottoni Save per-riga (DB e Config) e relative funzioni
+            enh = """
+<script>
+(function(){
+  // Delay per assicurarsi che il DOM sia completamente caricato e i dati popolati
+  function waitAndInject(){
+    setTimeout(()=>{
+      console.log('Injecting save buttons...');
+      
+      function getBase(){ try{ const raw=(document.getElementById('base')?.value||window.location.origin).trim(); return raw.replace(/\/+$/,''); }catch(_){ return window.location.origin; } }
+      function authHeaders(){ const t=document.getElementById('token')?.value?.trim()||''; const adm=document.getElementById('adm')?.value?.trim()||''; const h={'Content-Type':'application/json'}; if(t){ try{ const isJwt = t.split('.').length===3; if(isJwt) h['Authorization']=`Bearer ${t}`; }catch(_){ } } if(adm) h['X-Admin-Key']=adm; return h; }
+
+      function injectSaveBtnToDbRow(tr){ try{
+        const actionsCell = tr.querySelector('td:last-child'); if(!actionsCell) return;
+        const removeBtn = actionsCell.querySelector('button');
+        const btn = document.createElement('button'); btn.textContent='💾 Save'; btn.style.marginRight='6px'; btn.onclick=()=>saveDbPlanFromRow(tr, btn);
+        if(removeBtn) actionsCell.insertBefore(btn, removeBtn); else actionsCell.appendChild(btn);
+        console.log('Added save button to DB row');
+      }catch(_){}}
+
+      async function saveDbPlanFromRow(tr, btn){
+        try{
+          const inputs = tr.querySelectorAll('input'); const sel = tr.querySelector('select');
+          const plan = {
+            id: (inputs[0]?.value||'').trim(),
+            name: (inputs[1]?.value||'').trim(),
+            type: sel?.value||'subscription',
+            price_per_month: parseFloat(inputs[2]?.value)||0,
+            credits_per_month: parseInt(inputs[3]?.value)||0,
+            rollout_percentage: parseFloat(inputs[4]?.value)||0,
+            max_credits_rollover: parseInt(inputs[5]?.value)||0,
+            is_active: !!inputs[6]?.checked
+          };
+          if(!plan.id){ alert('Imposta un Plan ID'); return; }
+          const base=getBase(); const h=authHeaders();
+          const r=await fetch(`${base}/core/v1/admin/subscription-plans`,{ method:'PUT', headers:h, body: JSON.stringify({ plans:[plan] }) });
+          if(r.ok){ btn.textContent='✅ Saved'; setTimeout(()=>{ btn.textContent='💾 Save'; },1200); } else { const tx=await r.text(); alert(`Errore salvataggio: ${r.status} ${tx}`); }
+        }catch(e){ alert('Errore salvataggio piano'); }
+      }
+
+      function injectSaveBtnToPlanRow(tr){ try{
+        const actionsCell = tr.querySelector('td:last-child'); if(!actionsCell) return;
+        const removeBtn = actionsCell.querySelector('button');
+        const btn = document.createElement('button'); btn.textContent='💾 Save'; btn.style.marginRight='6px'; btn.onclick=()=>saveSinglePlanFromRow(tr, btn);
+        if(removeBtn) actionsCell.insertBefore(btn, removeBtn); else actionsCell.appendChild(btn);
+        console.log('Added save button to Plan row');
+      }catch(_){}}
+
+      async function saveSinglePlanFromRow(tr, btn){
+        try{
+          const inputs=tr.querySelectorAll('input'); const sel=tr.querySelector('select'); const type=sel?.value||'subscription';
+          const plan={ id:(inputs[0]?.value||'').trim(), name:(inputs[1]?.value||'').trim(), type, variant_id:(inputs[2]?.value||'').trim(), price_usd: parseFloat(inputs[3]?.value)||0, credits: parseInt(inputs[4]?.value)||0, ...(type==='subscription'?{credits_per_month: parseInt(inputs[4]?.value)||0}:{}) };
+          if(!plan.id||!plan.variant_id){ alert('Plan ID e Variant ID sono obbligatori'); return; }
+          const base=getBase(); const h=authHeaders();
+          const rGet=await fetch(`${base}/core/v1/admin/billing/config`, { headers: authHeaders() });
+          const cfg=await rGet.json(); const conf=(cfg&&cfg.config)?cfg.config:{}; const plans=Array.isArray(conf.plans)?conf.plans.slice():[];
+          const idx=plans.findIndex(p=>p.id===plan.id); if(idx>=0) plans[idx]=plan; else plans.push(plan); conf.plans=plans;
+          const rPut=await fetch(`${base}/core/v1/admin/billing/config`, { method:'PUT', headers:h, body: JSON.stringify(conf) });
+          if(rPut.ok){ btn.textContent='✅ Saved'; setTimeout(()=>{ btn.textContent='💾 Save'; },1200); } else { const tx=await rPut.text(); alert(`Errore salvataggio: ${rPut.status} ${tx}`); }
+        }catch(e){ alert('Errore salvataggio piano'); }
+      }
+
+      // Inietta save buttons nelle righe esistenti
+      try{ 
+        const dbRows = document.querySelectorAll('#db_plans_table tbody tr');
+        console.log('Found DB rows:', dbRows.length);
+        dbRows.forEach(injectSaveBtnToDbRow); 
+      }catch(e){ console.error('Error injecting DB buttons:', e); }
+      
+      try{ 
+        const planRows = document.querySelectorAll('#plans_table tbody tr');
+        console.log('Found Plan rows:', planRows.length);
+        planRows.forEach(injectSaveBtnToPlanRow); 
+      }catch(e){ console.error('Error injecting Plan buttons:', e); }
+      
+      // Override addDbPlanRow per aggiungere bottoni alle nuove righe
+      try{ const origDb = window.addDbPlanRow; if(typeof origDb==='function'){ window.addDbPlanRow=function(){ origDb.apply(this, arguments); const tbody=document.querySelector('#db_plans_table tbody'); const rows=tbody?.querySelectorAll('tr'); const last=rows?.[rows.length-1]; if(last) injectSaveBtnToDbRow(last); }; } }catch(_){}
+      try{ const origPlan = window.addPlanRow; if(typeof origPlan==='function'){ window.addPlanRow=function(){ origPlan.apply(this, arguments); const tbody=document.querySelector('#plans_table tbody'); const rows=tbody?.querySelectorAll('tr'); const last=rows?.[rows.length-1]; if(last) injectSaveBtnToPlanRow(last); }; } }catch(_){}
+      
+      // Override setDbPlans per aggiungere bottoni dopo il caricamento dati
+      try{ 
+        const origSetDb = window.setDbPlans; 
+        if(typeof origSetDb==='function'){ 
+          window.setDbPlans=function(plans){ 
+            origSetDb.apply(this, arguments); 
+            setTimeout(()=>{
+              console.log('Re-injecting after setDbPlans');
+              document.querySelectorAll('#db_plans_table tbody tr').forEach(injectSaveBtnToDbRow);
+            }, 100);
+          }; 
+        } 
+      }catch(_){}
+      
+      // Override setPlans per aggiungere bottoni dopo il caricamento dati
+      try{ 
+        const origSetPlans = window.setPlans; 
+        if(typeof origSetPlans==='function'){ 
+          window.setPlans=function(plans){ 
+            origSetPlans.apply(this, arguments); 
+            setTimeout(()=>{
+              console.log('Re-injecting after setPlans');
+              document.querySelectorAll('#plans_table tbody tr').forEach(injectSaveBtnToPlanRow);
+            }, 100);
+          }; 
+        } 
+      }catch(_){}
+      
+    }, 500); // Delay di 500ms per assicurarsi che tutto sia caricato
+  }
+  
+  // Esegui quando il DOM è pronto E dopo un delay per sicurezza
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', waitAndInject);
+  } else {
+    waitAndInject();
+  }
+  
+})();
+</script>
+"""
+            html += enh
+        except Exception:
+            pass
+        return html
+    except Exception:
+        return ""
 
 router = APIRouter()
 
@@ -243,6 +423,66 @@ async def business_dashboard() -> str:
       </div>
     </div>
 
+    <h3>Rollout & Scheduler</h3>
+    <div class=\"row\">
+      <div>
+        <label>Rollout Interval</label>
+        <select id=\"rollout_interval\">
+          <option value=\"monthly\">Monthly</option>
+          <option value=\"weekly\">Weekly</option>
+          <option value=\"custom\">Custom</option>
+        </select>
+      </div>
+      <div>
+        <label>Credits per Period (override)</label>
+        <input id=\"rollout_credits_per_period\" type=\"number\" step=\"1\"/>
+      </div>
+      <div>
+        <label>Max Credits Rollover</label>
+        <input id=\"rollout_max_credits_rollover\" type=\"number\" step=\"1\"/>
+      </div>
+      <div>
+        <label>Proration</label>
+        <select id=\"rollout_proration\">
+          <option value=\"none\">None</option>
+          <option value=\"prorata\">Prorata</option>
+          <option value=\"cliff\">Cliff</option>
+        </select>
+      </div>
+      <div>
+        <label>Rollout Percentage (%)</label>
+        <input id=\"rollout_percentage\" type=\"number\" step=\"0.1\"/>
+      </div>
+    </div>
+    <div class=\"row\">
+      <div>
+        <label>Scheduler Enabled</label>
+        <input id=\"rollout_scheduler_enabled\" type=\"checkbox\"/>
+      </div>
+      <div>
+        <label>Scheduler Time (UTC, HH:MM)</label>
+        <input id=\"rollout_scheduler_time_utc\" placeholder=\"03:00\"/>
+      </div>
+    </div>
+
+    <h3>Discounts & Business</h3>
+    <div class=\"row\">
+      <div>
+        <label>Signup Initial Credits Cost (USD)</label>
+        <input id=\"signup_initial_credits_cost_usd\" type=\"number\" step=\"0.01\"/>
+      </div>
+      <div>
+        <label>Unused Credits recognized as revenue</label>
+        <input id=\"unused_credits_as_revenue\" type=\"checkbox\" checked/>
+      </div>
+    </div>
+    <h4>Plan Discounts (%)</h4>
+    <table id=\"discounts_table\">
+      <thead><tr><th>Plan ID</th><th>Discount %</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <button onclick=\"addDiscountRow()\">+ Aggiungi sconto</button>
+
     <h3>Fixed Monthly Costs</h3>
     <table id=\"costs_table\">
       <thead>
@@ -318,7 +558,7 @@ async def business_dashboard() -> str:
 
     <script>
       function getBase(){ const raw = (document.getElementById('base').value || window.location.origin).trim(); return raw.replace(/\/+$/,''); }
-      function authHeaders(){ const t = document.getElementById('token').value.trim(); const h = {'Content-Type':'application/json'}; if(t) h['Authorization'] = `Bearer ${t}`; return h; }
+      function authHeaders(){ const t = document.getElementById('token').value.trim(); const adm=document.getElementById('adm')?.value.trim(); const h = {'Content-Type':'application/json'}; if(t) h['Authorization'] = `Bearer ${t}`; if(adm) h['X-Admin-Key']=adm; return h; }
       function addCostRow(name='', cost=''){
         const tbody = document.querySelector('#costs_table tbody');
         const tr = document.createElement('tr');
@@ -351,6 +591,18 @@ async def business_dashboard() -> str:
         document.getElementById('min_op_cost').value = cfg.minimum_operation_cost_credits ?? '';
         document.getElementById('signup_initial').value = cfg.signup_initial_credits ?? '';
         document.getElementById('min_affordability').value = cfg.minimum_affordability_credits ?? '';
+        // Rollout & scheduler
+        document.getElementById('rollout_interval').value = cfg.rollout_interval || 'monthly';
+        document.getElementById('rollout_credits_per_period').value = cfg.rollout_credits_per_period ?? '';
+        document.getElementById('rollout_max_credits_rollover').value = cfg.rollout_max_credits_rollover ?? '';
+        document.getElementById('rollout_proration').value = cfg.rollout_proration || 'none';
+        document.getElementById('rollout_percentage').value = cfg.rollout_percentage ?? 100;
+        document.getElementById('rollout_scheduler_enabled').checked = !!cfg.rollout_scheduler_enabled;
+        document.getElementById('rollout_scheduler_time_utc').value = cfg.rollout_scheduler_time_utc || '03:00';
+        // Discounts & business
+        document.getElementById('signup_initial_credits_cost_usd').value = cfg.signup_initial_credits_cost_usd ?? '';
+        document.getElementById('unused_credits_as_revenue').checked = cfg.unused_credits_recognized_as_revenue !== false;
+        setDiscountRows(cfg.plan_discounts_percent || {});
         setCosts(cfg.fixed_monthly_costs_usd);
         setFlowRowsFromObject(cfg.flow_costs_usd || {});
         simulate(cfg);
@@ -367,7 +619,17 @@ async def business_dashboard() -> str:
           minimum_operation_cost_credits: parseFloat(document.getElementById('min_op_cost').value) || 0,
           signup_initial_credits: parseFloat(document.getElementById('signup_initial').value) || 0,
           minimum_affordability_credits: parseFloat(document.getElementById('min_affordability').value) || 0,
-          flow_costs_usd: readFlowRowsToObject()
+          flow_costs_usd: readFlowRowsToObject(),
+          rollout_interval: document.getElementById('rollout_interval').value || 'monthly',
+          rollout_credits_per_period: parseInt(document.getElementById('rollout_credits_per_period').value) || 0,
+          rollout_max_credits_rollover: parseInt(document.getElementById('rollout_max_credits_rollover').value) || 0,
+          rollout_proration: document.getElementById('rollout_proration').value || 'none',
+          rollout_percentage: parseFloat(document.getElementById('rollout_percentage').value) || 100,
+          rollout_scheduler_enabled: document.getElementById('rollout_scheduler_enabled').checked,
+          rollout_scheduler_time_utc: (document.getElementById('rollout_scheduler_time_utc').value||'03:00'),
+          plan_discounts_percent: readDiscountRowsToObject(),
+          signup_initial_credits_cost_usd: parseFloat(document.getElementById('signup_initial_credits_cost_usd').value) || 0,
+          unused_credits_recognized_as_revenue: document.getElementById('unused_credits_as_revenue').checked
         };
         const url = appId ? `${base}/core/v1/admin/pricing/config?app_id=${encodeURIComponent(appId)}` : `${base}/core/v1/admin/pricing/config`;
         const r = await fetch(url, { method:'PUT', headers, body: JSON.stringify(body) });
@@ -405,7 +667,14 @@ async def business_dashboard() -> str:
           example_flow: exampleFlow,
           final_cost_credits: round2(finalCredits),
           final_cost_usd: round6(finalUsd),
-          fixed_monthly_costs_total_usd: round2(fixed)
+          fixed_monthly_costs_total_usd: round2(fixed),
+          rollout_interval: cfg.rollout_interval,
+          rollout_credits_per_period: cfg.rollout_credits_per_period,
+          rollout_max_credits_rollover: cfg.rollout_max_credits_rollover,
+          rollout_percentage: cfg.rollout_percentage,
+          scheduler_enabled: !!cfg.rollout_scheduler_enabled,
+          scheduler_time_utc: cfg.rollout_scheduler_time_utc,
+          unused_credits_as_revenue: cfg.unused_credits_recognized_as_revenue !== false
         };
         // KPI cards
         const kpi = [
@@ -589,3 +858,892 @@ async def business_dashboard() -> str:
 @router.get("/business", response_class=HTMLResponse, include_in_schema=False)
 async def business_dashboard_compat() -> str:
     return await business_dashboard()
+
+
+# Endpoint dashboard unificata (UI contenitore con navigazione)
+@router.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)
+async def dashboard() -> str:
+    """Dashboard unificata con navigazione e sezioni incorporate.
+
+    Rende disponibile una UI unica che integra le sezioni già esistenti
+    (Business & Pricing, Billing, Observability, Config) senza duplicare logica,
+    incorporandole come viste all'interno della stessa pagina.
+    """
+    # Se presente nel documento, usa la versione più recente 1:1
+    html = _load_unified_dashboard_html()
+    if html:
+        return html
+    return """
+<!doctype html>
+<html data-theme="corporate">
+  <head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <title>Flow Starter - Dashboard Unificata</title>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.23/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      html, body { height: 100%; }
+      .sidebar-link { transition: all 0.2s; }
+      .sidebar-link:hover { background: rgba(59, 130, 246, 0.08); }
+      .sidebar-link.active { background: rgba(59, 130, 246, 0.15); border-left: 3px solid #3b82f6; }
+      .content-area { min-height: calc(100vh - 4rem); }
+      .frame { width: 100%; min-height: calc(100vh - 5.5rem); border: 0; background: #fff; }
+      .brand { font-weight: 700; letter-spacing: .2px; }
+    </style>
+  </head>
+  <body>
+    <div class="drawer lg:drawer-open">
+      <input id="drawer-toggle" type="checkbox" class="drawer-toggle" />
+
+      <!-- Main Content -->
+      <div class="drawer-content flex flex-col">
+        <!-- Navbar (mobile) -->
+        <div class="navbar bg-base-100 shadow-md lg:hidden">
+          <div class="flex-none">
+            <label for="drawer-toggle" class="btn btn-square btn-ghost">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+            </label>
+          </div>
+          <div class="flex-1">
+            <span class="text-xl brand">Flow Starter</span>
+          </div>
+        </div>
+
+        <!-- Content Area -->
+        <div class="content-area bg-base-200 p-4 lg:p-6">
+          <div class="max-w-7xl mx-auto">
+            <div id="page-header" class="mb-4">
+              <h1 class="text-2xl font-bold">Dashboard</h1>
+              <p class="text-base-content/60">Panoramica e accesso rapido alle sezioni</p>
+            </div>
+            <div id="overview" class="p-6">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  <div class="card bg-base-100 shadow"><div class="card-body"><h2 class="card-title text-sm">Business & Pricing</h2><p class="text-sm text-base-content/70">Configura pricing, costi e simulazioni.</p><div class="card-actions justify-end"><button class="btn btn-primary btn-sm" onclick="navigate('business')">Apri</button></div></div></div>
+                  <div class="card bg-base-100 shadow"><div class="card-body"><h2 class="card-title text-sm">Billing & Plans</h2><p class="text-sm text-base-content/70">Gestisci provider, piani e checkout.</p><div class="card-actions justify-end"><button class="btn btn-primary btn-sm" onclick="navigate('billing')">Apri</button></div></div></div>
+                  <div class="card bg-base-100 shadow"><div class="card-body"><h2 class="card-title text-sm">Observability</h2><p class="text-sm text-base-content/70">Telemetria OpenRouter, ledger e rollouts.</p><div class="card-actions justify-end"><button class="btn btn-primary btn-sm" onclick="navigate('observability')">Apri</button></div></div></div>
+                </div>
+                <div class="card bg-base-100 shadow">
+                  <div class="card-body">
+                    <h2 class="card-title">Suggerimenti</h2>
+                    <ul class="list-disc pl-5 text-sm text-base-content/70">
+                      <li>Imposta Base URL e token in ogni UI integrata se richiesti.</li>
+                      <li>Le sezioni sono caricate dalle UI esistenti: nessuna duplicazione di logica.</li>
+                    </ul>
+                  </div>
+                </div>
+            </div>
+            <div id="frame-container" class="rounded-xl overflow-hidden border border-base-300 bg-white" style="display:none"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sidebar -->
+      <div class="drawer-side">
+        <label for="drawer-toggle" class="drawer-overlay"></label>
+        <aside class="w-64 min-h-full bg-base-100 text-base-content">
+          <!-- Logo -->
+          <div class="p-4 border-b">
+            <h2 class="text-2xl brand text-primary">Flow Starter</h2>
+            <p class="text-sm text-base-content/60">Admin Dashboard</p>
+          </div>
+          <!-- Navigation -->
+          <ul class="menu p-2">
+            <li><a href="#" class="sidebar-link active" data-page="overview">Overview</a></li>
+            <li><a href="#" class="sidebar-link" data-page="business">Business & Pricing</a></li>
+            <li><a href="#" class="sidebar-link" data-page="billing">Billing & Plans</a></li>
+            <li><a href="#" class="sidebar-link" data-page="observability">Observability</a></li>
+            <li><a href="#" class="sidebar-link" data-page="config">Configuration</a></li>
+            <li><a href="#" class="sidebar-link" data-page="testing">Testing</a></li>
+          </ul>
+          <div class="p-4 mt-auto border-t text-xs text-base-content/60">
+            <span>Dashboard Unificata</span>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <script>
+      (function(){
+        const links = document.querySelectorAll('.sidebar-link');
+        const mainContentEl = document.getElementById('main-content');
+        const headerTitle = document.querySelector('#page-header h1');
+        const headerSub = document.querySelector('#page-header p');
+        const OVERVIEW_ID = 'overview';
+
+        const base = window.location.origin.replace(/\/$/, '') + '/core/v1/admin-ui';
+        const routes = {
+          business: base + '/business-dashboard',
+          billing: base + '/billing',
+          observability: base + '/observability',
+          config: base + '/ui',
+          testing: base + '/ui' // reindirizzato alla UI admin per test veloci
+        };
+
+        function setActive(page){
+          links.forEach(a => a.classList.remove('active'));
+          const el = Array.from(links).find(a => a.getAttribute('data-page') === page);
+          if(el) el.classList.add('active');
+        }
+
+        function setHeader(page){
+          const titles = {
+            overview: ['Dashboard','Panoramica e accesso rapido alle sezioni'],
+            business: ['Business & Pricing','Configurazione pricing e simulazioni'],
+            billing: ['Billing & Plans','Gestione provider, piani e checkout'],
+            observability: ['Observability','Telemetria OpenRouter, ledger e rollouts'],
+            config: ['Configuration','Flow mappings, sicurezza e setup'],
+            testing: ['Testing','Esecuzione rapida dei flow di test']
+          };
+          const t = titles[page] || titles.overview;
+          headerTitle.textContent = t[0];
+          headerSub.textContent = t[1];
+        }
+
+        function showOverview(){
+          const ov = document.getElementById(OVERVIEW_ID);
+          if(ov){
+            headerTitle.textContent = 'Dashboard';
+            headerSub.textContent = 'Panoramica e accesso rapido alle sezioni';
+            mainContentEl.innerHTML = '';
+            mainContentEl.appendChild(ov);
+            ov.style.display = 'block';
+          }
+        }
+
+        function applyDynamicStyles(doc){
+          // Rimuovi stili precedenti
+          Array.from(document.querySelectorAll('style[data-dyn],link[data-dyn]')).forEach(n => n.remove());
+          // Importa <style> e <link rel="stylesheet"> dal documento caricato
+          doc.querySelectorAll('style').forEach(s => {
+            const ns = document.createElement('style'); ns.setAttribute('data-dyn',''); ns.textContent = s.textContent; document.head.appendChild(ns);
+          });
+          doc.querySelectorAll('link[rel="stylesheet"]').forEach(l => {
+            const nl = document.createElement('link'); nl.rel='stylesheet'; nl.href=l.href; nl.setAttribute('data-dyn',''); document.head.appendChild(nl);
+          });
+        }
+
+        async function fetchAndInject(url){
+          try{
+            mainContentEl.innerHTML = '<div class="flex items-center justify-center h-96"><span class="loading loading-spinner loading-lg"></span></div>';
+            const r = await fetch(url, { headers: { 'X-Requested-With':'UnifiedDashboard' } });
+            const html = await r.text();
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            applyDynamicStyles(doc);
+            const body = doc.body || doc.querySelector('body');
+            mainContentEl.innerHTML = body ? body.innerHTML : html;
+          }catch(e){
+            mainContentEl.innerHTML = `<div class="alert alert-error"><span>Errore caricamento sezione: ${e?.message||e}</span></div>`;
+          }
+        }
+
+        function navigate(page){
+          localStorage.setItem('unified_dashboard_page', page);
+          setActive(page);
+          setHeader(page);
+          if(page === 'overview'){ showOverview(); return; }
+          const src = routes[page];
+          if(src){ fetchAndInject(src); }
+        }
+
+        // Link handlers
+        links.forEach(a => {
+          a.addEventListener('click', function(e){ e.preventDefault(); navigate(this.getAttribute('data-page')); });
+        });
+
+        // Restore last page
+        const last = localStorage.getItem('unified_dashboard_page') || 'overview';
+        navigate(last);
+
+        // Expose for cards
+        window.navigate = navigate;
+      })();
+    </script>
+  </body>
+</html>
+    """
+
+
+# =============================
+# Billing UI (piani e checkout)
+# =============================
+@router.get("/billing", response_class=HTMLResponse, include_in_schema=False)
+async def billing_ui() -> str:
+    return """
+<!doctype html>
+<html>
+  <head>
+    <meta charset=\"utf-8\"/>
+    <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"/>
+    <title>Billing - FlowStarter</title>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:800px;margin:24px auto;padding:0 16px}
+      input,textarea,button{font:inherit}
+      label{display:block;margin:8px 0 4px}
+      input,textarea{width:100%;padding:8px;border:1px solid #ccc;border-radius:6px}
+      button{margin-top:12px;padding:10px 14px;border:0;background:#0f62fe;color:#fff;border-radius:6px;cursor:pointer}
+      pre{background:#f6f8fa;padding:12px;border-radius:6px;overflow:auto}
+      .row{display:flex;gap:16px;flex-wrap:wrap}
+      .row>div{flex:1 1 240px}
+      table{border-collapse:collapse;width:100%}
+      th,td{border:1px solid #e5e7eb;padding:8px;text-align:left}
+      th{background:#fafafa}
+      small.muted{color:#666}
+    </style>
+  </head>
+  <body>
+    <h1>Billing</h1>
+    <p class=\"muted\">Gestisci piani e genera link di checkout (provider-agnostico). Endpoint webhook: <code>/core/v1/billing/webhook</code></p>
+
+    <div class=\"row\">
+      <div>
+        <label>Bearer Token</label>
+        <input id=\"token\" placeholder=\"eyJhbGciOi...\"/>
+      </div>
+      <div>
+        <label>Base URL Core</label>
+        <input id=\"base\" value=\"\" placeholder=\"http://127.0.0.1:5050\"/>
+      </div>
+    </div>
+
+    <h2>Piani</h2>
+    <div class="row">
+      <div><button onclick="loadPlans()">Carica piani</button></div>
+      <div><button onclick="importProviderPlansToDb()">Importa → Piani (DB)</button></div>
+    </div>
+    <div id="plans_notice" style="margin:8px 0"></div>
+    <pre id="plans_out"></pre>
+
+    <h2>Piani (DB)</h2>
+    <p class="muted">Gestisci piani in tabella <code>subscription_plans</code> con rollout per-piano.</p>
+    <div class="row">
+      <div><button onclick="loadDbPlans()">Carica piani (DB)</button></div>
+      <div><button onclick="saveDbPlans()">Salva piani (DB)</button></div>
+    </div>
+    <table id="db_plans_table">
+      <thead>
+        <tr>
+          <th>Plan ID</th><th>Nome</th><th>Tipo</th><th>Prezzo USD</th><th>Crediti/mese</th>
+          <th>Rollout %</th><th>Max Rollover</th><th>Attivo</th><th></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <button onclick="addDbPlanRow()">+ Aggiungi Piano (DB)</button>
+
+    <h2>Config Provider (Admin)</h2>
+    <p><small class=\"muted\">Configura e salva su Supabase (tabella <code>billing_configs</code>). Se hai la <code>CORE_ADMIN_KEY</code> puoi usare l'header <code>X-Admin-Key</code> al posto del Bearer Token.</small></p>
+    <div class=\"row\">
+      <div><label>Admin Key (opzionale)</label><input id=\"adm\" placeholder=\"CORE_ADMIN_KEY\"/></div>
+      <div><label>Provider</label><input id=\"provider\" value=\"lemonsqueezy\"/></div>
+    </div>
+    
+    <h3>LemonSqueezy Settings</h3>
+    <div class=\"row\">
+      <div><label>Store ID</label><input id=\"ls_store\" placeholder=\"199395\"/></div>
+    </div>
+    <div class=\"row\">
+      <div><label>Test Mode</label><input type=\"checkbox\" id=\"ls_test_mode\"/></div>
+      <div><label>Sandbox Mode</label><input type=\"checkbox\" id=\"ls_sandbox\"/></div>
+    </div>
+    <div class=\"row\">
+      <div>
+        <button id=\"btn_test_conn\" onclick=\"testProvider()\">Test connessione LS</button>
+      </div>
+      <div>
+        <button onclick=\"rotateCred('api_key')\">Ruota API Key</button>
+      </div>
+      <div>
+        <button onclick=\"rotateCred('webhook_secret')\">Ruota Webhook Secret</button>
+      </div>
+    </div>
+    <pre id=\"cred_out\"></pre>
+    
+
+
+    <h3>Piani Configurabili</h3>
+    <table id=\"plans_table\">
+      <thead>
+        <tr><th>Plan ID</th><th>Nome</th><th>Tipo</th><th>Variant ID</th><th>Prezzo USD</th><th>Crediti</th><th></th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <button onclick=\"addPlanRow()\">+ Aggiungi Piano</button>
+
+    <div class=\"row\">
+      <button onclick=\"loadBillingCfg()\">Carica config</button>
+      <button onclick=\"saveBillingCfg()\">Salva config</button>
+    </div>
+    <pre id=\"cfg_out\"></pre>
+
+    <h2>Crea Checkout</h2>
+    <div class=\"row\">
+      <div>
+        <label>Utente</label>
+        <select id=\"user_select\"><option value=\"\">-- Seleziona utente --</option></select>
+        <small id=\"user_info\" class=\"muted\"></small>
+      </div>
+      <div style=\"align-self:flex-end\"> 
+        <button type=\"button\" onclick=\"loadUsers()\">Aggiorna elenco utenti</button>
+      </div>
+    </div>
+    <div class=\"row\">
+      <div>
+        <label>Plan ID (da tabella sopra)</label>
+        <select id=\"plan_select\"><option value=\"\">-- Seleziona piano --</option></select>
+      </div>
+    </div>
+    <button onclick=\"createCheckout()\">Genera Checkout</button>
+    <pre id=\"checkout_out\"></pre>
+
+    <script>
+      function getBase(){ const raw=(document.getElementById('base').value||window.location.origin).trim(); return raw.replace(/\/+$/,''); }
+      function authHeaders(){
+        const t=document.getElementById('token').value.trim();
+        const adm=document.getElementById('adm')?.value.trim();
+        const h={'Content-Type':'application/json'};
+        try{ const isJwt = t && t.split('.').length===3; if(isJwt) h['Authorization']=`Bearer ${t}`; }catch(_){ /* ignore */ }
+        if(adm) h['X-Admin-Key']=adm;
+        return h;
+      }
+
+      async function loadPlans(){
+        const base=getBase(); const h=authHeaders();
+        const notice = document.getElementById('plans_notice');
+        notice.innerHTML = '';
+        try{
+          const r=await fetch(`${base}/core/v1/billing/plans`,{ headers:h });
+          const txt=await r.text();
+          document.getElementById('plans_out').textContent = `STATUS ${r.status}\n\n${txt}`;
+          let data; try{ data = JSON.parse(txt); }catch(_){ data = null; }
+          const plans = (data && data.plans) ? data.plans : (Array.isArray(data) ? data : []);
+          if(Array.isArray(plans)) setPlans(plans);
+          const source = (data && data.source) || (Array.isArray(data) ? 'unknown' : 'unknown');
+          if(source === 'provider'){
+            notice.innerHTML = `<div style=\"background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;padding:10px;border-radius:8px\">`+
+              `Sono stati caricati piani dal provider (non persistenti). `+
+              `<button id=\"btn_import_plans\" style=\"margin-left:8px;background:#0f62fe;color:#fff;border:0;padding:6px 10px;border-radius:6px;cursor:pointer\">Salva su Supabase</button>`+
+              `</div>`;
+            document.getElementById('btn_import_plans').addEventListener('click', async ()=>{
+              await savePlansToSupabase(plans);
+            });
+          } else if(source === 'config'){
+            notice.innerHTML = `<div style=\"background:#ecfeff;border:1px solid #a5f3fc;color:#075985;padding:10px;border-radius:8px\">`+
+              `Piani caricati da Supabase (config persistente).`+
+              `</div>`;
+          }
+        }catch(e){
+          document.getElementById('plans_out').textContent = `Errore caricamento piani: ${e?.message||e}`;
+        }
+      }
+
+      async function savePlansToSupabase(plans){
+        const base=getBase(); const h=authHeaders(); h['Content-Type']='application/json';
+        try{
+          // leggi config corrente per non sovrascrivere altri campi
+          const rGet = await fetch(`${base}/core/v1/admin/billing/config`, { headers: authHeaders() });
+          const cfg = await rGet.json();
+          const conf = (cfg && cfg.config) ? cfg.config : {};
+          conf.plans = Array.isArray(plans) ? plans : [];
+          const rPut = await fetch(`${base}/core/v1/admin/billing/config`, { method:'PUT', headers: h, body: JSON.stringify(conf) });
+          const saved = await rPut.json();
+          const notice = document.getElementById('plans_notice');
+          if(rPut.ok){
+            notice.innerHTML = `<div style=\"background:#ecfeff;border:1px solid #a5f3fc;color:#075985;padding:10px;border-radius:8px\">`+
+              `✅ Piani salvati su Supabase. `+
+              `<button id=\"btn_reload_plans\" style=\"margin-left:8px;background:#0f62fe;color:#fff;border:0;padding:6px 10px;border-radius:6px;cursor:pointer\">Ricarica</button>`+
+              `</div>`;
+            document.getElementById('btn_reload_plans').addEventListener('click', loadPlans);
+          } else {
+            notice.innerHTML = `<div style=\"background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:10px;border-radius:8px\">`+
+              `❌ Errore salvataggio piani: ${rPut.status} ${JSON.stringify(saved)}`+
+              `</div>`;
+          }
+        }catch(e){
+          const notice = document.getElementById('plans_notice');
+          notice.innerHTML = `<div style=\"background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:10px;border-radius:8px\">`+
+            `❌ Errore salvataggio piani: ${e?.message||e}`+
+            `</div>`;
+        }
+      }
+
+      async function importProviderPlansToDb(){
+        const base=getBase(); const h=authHeaders();
+        try{
+          const r=await fetch(`${base}/core/v1/billing/plans`,{ headers:h });
+          const data = await r.json();
+          const plans = Array.isArray(data?.plans) ? data.plans : [];
+          if(!plans.length){ alert('Nessun piano dal provider'); return; }
+          // Mappa ai campi DB
+          const mapped = plans.map(p=>({
+            id: p.id,
+            name: p.name,
+            type: p.type||'subscription',
+            price_per_month: p.price_usd || 0,
+            credits_per_month: p.credits_per_month || p.credits || 0,
+            rollout_percentage: 100,
+            max_credits_rollover: 0,
+            is_active: true
+          }));
+          setDbPlans(mapped);
+          alert('Piani importati nella tabella (non ancora salvati). Clicca "Salva piani (DB)".');
+        }catch(e){ alert('Errore import provider → DB'); }
+      }
+
+      // ===== Piani (DB) con sconto e rollout per-piano =====
+      function addDbPlanRow(id='', name='', type='subscription', price='', credits='', rollout='', rollover='', active=true){
+        const tbody = document.querySelector('#db_plans_table tbody');
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><input value="${id}" placeholder="starter"/></td>
+          <td><input value="${name}" placeholder="Starter"/></td>
+          <td><select><option value="subscription" ${type==='subscription'?'selected':''}>Subscription</option><option value="pay_as_go" ${type==='pay_as_go'?'selected':''}>Pay-as-you-go</option></select></td>
+          <td><input type="number" step="0.01" value="${price}" placeholder="19.00"/></td>
+          <td><input type="number" step="1" value="${credits}" placeholder="1000"/></td>
+          <td><input type="number" step="0.01" value="${rollout}" placeholder="100"/></td>
+          <td><input type="number" step="1" value="${rollover}" placeholder="2000"/></td>
+          <td style="text-align:center"><input type="checkbox" ${active? 'checked':''}/></td>
+          <td>
+            <button type="button" onclick="saveDbPlan(this)" style="margin-right:6px">💾 Save</button>
+            <button type="button">🗑</button>
+          </td>
+        `;
+        tr.querySelector('button').addEventListener('click', ()=> tr.remove());
+        tbody.appendChild(tr);
+      }
+
+      function readDbPlans(){
+        const rows = Array.from(document.querySelectorAll('#db_plans_table tbody tr'));
+        return rows.map(r=>{
+          const inputs = r.querySelectorAll('input');
+          const sel = r.querySelector('select');
+          return {
+            id: inputs[0].value.trim(),
+            name: inputs[1].value.trim(),
+            type: sel.value,
+            price_per_month: parseFloat(inputs[2].value)||0,
+            credits_per_month: parseInt(inputs[3].value)||0,
+            rollout_percentage: parseFloat(inputs[4].value)||0,
+            max_credits_rollover: parseInt(inputs[5].value)||0,
+            is_active: inputs[6].checked
+          };
+        }).filter(p=> p.id);
+      }
+
+      function setDbPlans(plans){
+        const tbody = document.querySelector('#db_plans_table tbody');
+        tbody.innerHTML='';
+        (plans||[]).forEach(p=> addDbPlanRow(
+          p.id,
+          p.name,
+          p.type||'subscription',
+          p.price_per_month||0,
+          p.credits_per_month||0,
+          p.rollout_percentage||0,
+          (p.is_active!==false)
+        ));
+      }
+
+      function readDbPlanFromRow(tr){
+        const inputs = tr.querySelectorAll('input');
+        const sel = tr.querySelector('select');
+        return {
+          id: (inputs[0]?.value||'').trim(),
+          name: (inputs[1]?.value||'').trim(),
+          type: sel?.value || 'subscription',
+          price_per_month: parseFloat(inputs[2]?.value)||0,
+          credits_per_month: parseInt(inputs[3]?.value)||0,
+          rollout_percentage: parseFloat(inputs[4]?.value)||0,
+          max_credits_rollover: parseInt(inputs[5]?.value)||0,
+          is_active: !!inputs[6]?.checked
+        };
+      }
+
+      async function saveDbPlan(btn){
+        try{
+          const tr = btn.closest('tr');
+          const plan = readDbPlanFromRow(tr);
+          if(!plan.id){ alert('Imposta un Plan ID'); return; }
+          const base=getBase(); const h=authHeaders(); h['Content-Type']='application/json';
+          const r=await fetch(`${base}/core/v1/admin/subscription-plans`, { method:'PUT', headers:h, body: JSON.stringify({ plans: [plan] }) });
+          if(r.ok){
+            btn.textContent = '✅ Saved';
+            setTimeout(()=>{ btn.textContent='💾 Save'; }, 1200);
+          } else {
+            const txt = await r.text();
+            alert(`Errore salvataggio: ${r.status} ${txt}`);
+          }
+        }catch(e){ alert('Errore salvataggio piano'); }
+      }
+
+      async function loadDbPlans(){
+        const base=getBase(); const h=authHeaders();
+        const r=await fetch(`${base}/core/v1/admin/subscription-plans`, { headers:h });
+        const data = await r.json();
+        setDbPlans(data.plans||[]);
+      }
+
+      async function saveDbPlans(){
+        const base=getBase(); const h=authHeaders(); h['Content-Type']='application/json';
+        const plans = readDbPlans();
+        const r=await fetch(`${base}/core/v1/admin/subscription-plans`, { method:'PUT', headers:h, body: JSON.stringify({ plans }) });
+        const out = await r.text();
+        alert(`Salvato: ${r.status}`);
+      }
+
+      function addPlanRow(id='', name='', type='subscription', variant='', price='', credits=''){
+        const tbody = document.querySelector('#plans_table tbody');
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><input value="${id}" placeholder="es. starter"/></td>
+          <td><input value="${name}" placeholder="es. Starter Plan"/></td>
+          <td><select><option value="subscription" ${type==='subscription'?'selected':''}>Subscription</option><option value="one_time" ${type==='one_time'?'selected':''}>Pay-as-you-go</option></select></td>
+          <td><input value="${variant}" placeholder="123456"/></td>
+          <td><input type="number" step="0.01" value="${price}" placeholder="29.00"/></td>
+          <td><input type="number" step="1" value="${credits}" placeholder="5000"/></td>
+          <td>
+            <button type="button" onclick="saveSinglePlan(this)" style="margin-right:6px">💾 Save</button>
+            <button type="button" onclick="this.closest('tr').remove()">🗑</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      }
+
+      function readPlans(){
+        const rows = Array.from(document.querySelectorAll('#plans_table tbody tr'));
+        return rows.map(r => {
+          const inputs = r.querySelectorAll('input');
+          const select = r.querySelector('select');
+          const type = select.value;
+          return {
+            id: inputs[0].value.trim(),
+            name: inputs[1].value.trim(),
+            type: type,
+            variant_id: inputs[2].value.trim(),
+            price_usd: parseFloat(inputs[3].value) || 0,
+            credits: parseInt(inputs[4].value) || 0,
+            // Compatibilità: se subscription, aggiungi credits_per_month
+            ...(type === 'subscription' ? { credits_per_month: parseInt(inputs[4].value) || 0 } : {})
+          };
+        }).filter(p => p.id && p.variant_id);
+      }
+
+      function readPlanFromRow(tr){
+        const inputs = tr.querySelectorAll('input');
+        const select = tr.querySelector('select');
+        const type = select.value;
+        return {
+          id: (inputs[0]?.value||'').trim(),
+          name: (inputs[1]?.value||'').trim(),
+          type,
+          variant_id: (inputs[2]?.value||'').trim(),
+          price_usd: parseFloat(inputs[3]?.value)||0,
+          credits: parseInt(inputs[4]?.value)||0,
+          ...(type === 'subscription' ? { credits_per_month: parseInt(inputs[4]?.value)||0 } : {})
+        };
+      }
+
+      async function saveSinglePlan(btn){
+        try{
+          const tr = btn.closest('tr');
+          const plan = readPlanFromRow(tr);
+          if(!plan.id || !plan.variant_id){ alert('Plan ID e Variant ID sono obbligatori'); return; }
+          const base=getBase(); const h=authHeaders(); h['Content-Type']='application/json';
+          // leggi config corrente
+          const rGet = await fetch(`${base}/core/v1/admin/billing/config`, { headers: authHeaders() });
+          const cfg = await rGet.json();
+          const conf = (cfg && cfg.config) ? cfg.config : {};
+          const plans = Array.isArray(conf.plans) ? conf.plans.slice() : [];
+          const idx = plans.findIndex(p=> p.id===plan.id);
+          if(idx>=0) plans[idx]=plan; else plans.push(plan);
+          conf.plans = plans;
+          const rPut = await fetch(`${base}/core/v1/admin/billing/config`, { method:'PUT', headers:h, body: JSON.stringify(conf) });
+          if(rPut.ok){ btn.textContent='✅ Saved'; setTimeout(()=>{ btn.textContent='💾 Save'; },1200); }
+          else { const txt=await rPut.text(); alert(`Errore salvataggio: ${rPut.status} ${txt}`); }
+        }catch(e){ alert('Errore salvataggio piano'); }
+      }
+
+      function setPlans(plans){
+        const tbody = document.querySelector('#plans_table tbody');
+        tbody.innerHTML = '';
+        (plans || []).forEach(p => addPlanRow(p.id, p.name, p.type || 'subscription', p.variant_id, p.price_usd, p.credits || p.credits_per_month || 0));
+        updatePlanSelect(plans);
+      }
+
+      function updatePlanSelect(plans){
+        const sel = document.getElementById('plan_select');
+        sel.innerHTML = '<option value="">-- Seleziona piano --</option>';
+        (plans || []).forEach(p => {
+          const opt = document.createElement('option');
+          opt.value = p.id;
+          const creditsLabel = p.type === 'subscription' ? `${p.credits || p.credits_per_month || 0} crediti/mese` : `${p.credits || 0} crediti`;
+          opt.textContent = `${p.name} (${creditsLabel}, $${p.price_usd})`;
+          sel.appendChild(opt);
+        });
+      }
+
+
+
+      async function loadBillingCfg(){
+        const base=getBase(); const h=authHeaders();
+        const r=await fetch(`${base}/core/v1/admin/billing/config`, { headers:h });
+        const cfg=await r.json();
+        document.getElementById('cfg_out').textContent = JSON.stringify(cfg, null, 2);
+        const conf = cfg.config || {};
+        document.getElementById('provider').value = conf.provider || 'lemonsqueezy';
+        const ls = conf.lemonsqueezy || {};
+        document.getElementById('ls_store').value = ls.store_id || '';
+        document.getElementById('ls_test_mode').checked = ls.test_mode || false;
+        document.getElementById('ls_sandbox').checked = ls.sandbox || false;
+        setPlans(conf.plans || []);
+      }
+
+      async function saveBillingCfg(){
+        const base=getBase(); const h=authHeaders();
+        const plans = readPlans();
+        const cfg = {
+          provider: (document.getElementById('provider').value||'lemonsqueezy').trim() || 'lemonsqueezy',
+          lemonsqueezy: {
+            store_id: (document.getElementById('ls_store').value||'').trim() || undefined,
+            test_mode: document.getElementById('ls_test_mode').checked,
+            sandbox: document.getElementById('ls_sandbox').checked,
+          },
+          plans: plans
+        };
+        const r=await fetch(`${base}/core/v1/admin/billing/config`, { method:'PUT', headers:h, body: JSON.stringify(cfg) });
+        const out=await r.json();
+        document.getElementById('cfg_out').textContent = JSON.stringify(out, null, 2);
+        // se salvataggio ok, ricarica piani per mostrare la persistenza
+        if(r.ok){ loadPlans(); }
+      }
+
+      async function createCheckout(){
+        const base=getBase(); const h=authHeaders(); h['Content-Type']='application/json';
+        const userSel = document.getElementById('user_select');
+        const userId = userSel.value.trim();
+        const planId = document.getElementById('plan_select').value.trim();
+        if(!userId){ alert('Seleziona un utente'); return; }
+        if(!planId){ alert('Seleziona un piano'); return; }
+        const url = new URL(`${base}/core/v1/admin/billing/checkout`);
+        url.searchParams.set('user_id', userId);
+        url.searchParams.set('plan_id', planId);
+        const r=await fetch(url.toString(), { method:'POST', headers:h });
+        const txt=await r.text();
+        const outEl = document.getElementById('checkout_out');
+        outEl.textContent = `STATUS ${r.status}\n\n${txt}`;
+        // Gestione pulsanti azione (dedup)
+        let actions = document.getElementById('checkout_actions');
+        if(!actions){
+          actions = document.createElement('div');
+          actions.id = 'checkout_actions';
+          actions.style.marginTop = '8px';
+          outEl.parentElement.insertBefore(actions, outEl.nextSibling);
+        }
+        actions.innerHTML = '';
+        try{
+          const data = JSON.parse(txt);
+          const url = data?.checkout?.checkout_url;
+          if(url){
+            const openBtn = document.createElement('button');
+            openBtn.textContent = 'Apri checkout';
+            openBtn.style.cssText = 'background:#16a34a;color:#fff;border:0;padding:8px 12px;border-radius:6px;cursor:pointer;margin-right:8px';
+            openBtn.onclick = () => {
+              console.log('Opening checkout URL:', url);
+              window.open(url, '_blank');
+            };
+            actions.appendChild(openBtn);
+          } else {
+            actions.innerHTML += `<div style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;padding:8px;border-radius:6px">
+              <strong>Nessun checkout_url ricevuto.</strong><br>
+              Possibili cause:<br>
+              • La variante ${data?.checkout?.custom_data?.data?.relationships?.variant?.data?.id || 'selezionata'} non supporta custom pricing<br>
+              • Prova con una variante pay-as-you-go (es. 935638)<br>
+              • Verifica su LemonSqueezy che la variante sia configurata per prezzi custom
+            </div>`;
+          }
+          const verifyBtn = document.createElement('button');
+          verifyBtn.textContent = 'Verifica crediti';
+          verifyBtn.style.cssText = 'background:#0f62fe;color:#fff;border:0;padding:8px 12px;border-radius:6px;cursor:pointer';
+          verifyBtn.onclick = () => verifyCredits(userId);
+          actions.appendChild(verifyBtn);
+        }catch(_){ /* ignore parse */ }
+      }
+
+      async function verifyCredits(userId){
+        const base=getBase(); const h=authHeaders();
+        try{
+          const r = await fetch(`${base}/core/v1/admin/user-credits?user_id=${encodeURIComponent(userId)}`, { headers: h });
+          const txt = await r.text();
+          const outEl = document.getElementById('checkout_out');
+          outEl.textContent += `\n\nCREDITI ${r.status}\n${txt}`;
+        }catch(e){
+          const outEl = document.getElementById('checkout_out');
+          outEl.textContent += `\n\nErrore verifica crediti: ${e?.message||e}`;
+        }
+      }
+
+      async function loadUsers(){
+        const base=getBase(); const h=authHeaders();
+        try{
+          const r = await fetch(`${base}/core/v1/admin/users?limit=100`, { headers: h });
+          const data = await r.json();
+          const users = Array.isArray(data.users) ? data.users : [];
+          const sel = document.getElementById('user_select');
+          sel.innerHTML = '<option value="">-- Seleziona utente --</option>';
+          users.forEach(u => {
+            const opt = document.createElement('option');
+            opt.value = u.id;
+            opt.textContent = `${u.email} (crediti: ${u.credits ?? 0})`;
+            opt.dataset.credits = u.credits ?? 0;
+            sel.appendChild(opt);
+          });
+          sel.addEventListener('change', ()=>{
+            const cr = sel.options[sel.selectedIndex]?.dataset?.credits;
+            document.getElementById('user_info').textContent = cr!==undefined? `Crediti attuali: ${cr}` : '';
+          });
+        }catch(e){
+          document.getElementById('user_info').textContent = 'Errore caricamento utenti';
+        }
+      }
+
+      // ======= Sicurezza: Test connessione e Rotazione chiavi =======
+      async function testProvider(){
+        const base=getBase(); const h=authHeaders();
+        try{
+          const r = await fetch(`${base}/core/v1/admin/credentials/test?provider=lemonsqueezy`, { method:'POST', headers: h });
+          const txt = await r.text();
+          document.getElementById('cred_out').textContent = `TEST ${r.status}\n\n${txt}`;
+        }catch(e){
+          document.getElementById('cred_out').textContent = `Errore test: ${e?.message||e}`;
+        }
+      }
+
+      async function rotateCred(credentialKey){
+        const newVal = prompt(`Inserisci nuovo valore per ${credentialKey}`);
+        if(!newVal) return;
+        const base=getBase(); const h=authHeaders(); h['Content-Type']='application/json';
+        try{
+          const r = await fetch(`${base}/core/v1/admin/credentials/rotate`, { method:'POST', headers: h, body: JSON.stringify({ provider: 'lemonsqueezy', credential_key: credentialKey, new_value: newVal }) });
+          const txt = await r.text();
+          document.getElementById('cred_out').textContent = `ROTATE ${credentialKey} ${r.status}\n\n${txt}`;
+        }catch(e){
+          document.getElementById('cred_out').textContent = `Errore rotazione: ${e?.message||e}`;
+        }
+      }
+
+      // Auto-base
+      try{ const savedBase = localStorage.getItem('flowstarter_base_url'); if(savedBase) document.getElementById('base').value = savedBase; else document.getElementById('base').value = window.location.origin; }catch(_){ }
+    </script>
+  </body>
+</html>
+    """
+
+
+# =============================
+# Observability UI (OpenRouter, Credits, Rollouts)
+# =============================
+@router.get("/observability", response_class=HTMLResponse, include_in_schema=False)
+async def observability_ui() -> str:
+    return """
+<!doctype html>
+<html>
+  <head>
+    <meta charset=\"utf-8\"/>
+    <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"/>
+    <title>Observability - FlowStarter</title>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:980px;margin:24px auto;padding:0 16px}
+      input,textarea,button{font:inherit}
+      label{display:block;margin:8px 0 4px}
+      input,textarea{width:100%;padding:8px;border:1px solid #ccc;border-radius:6px}
+      button{margin-top:12px;padding:10px 14px;border:0;background:#0f62fe;color:#fff;border-radius:6px;cursor:pointer}
+      pre{background:#f6f8fa;padding:12px;border-radius:6px;overflow:auto}
+      .row{display:flex;gap:16px;flex-wrap:wrap}
+      .row>div{flex:1 1 240px}
+      table{border-collapse:collapse;width:100%}
+      th,td{border:1px solid #e5e7eb;padding:8px;text-align:left}
+      th{background:#fafafa}
+      small.muted{color:#666}
+      .actions{display:flex;gap:8px;flex-wrap:wrap}
+    </style>
+  </head>
+  <body>
+    <h1>Observability</h1>
+    <p class=\"muted\">Telemetria OpenRouter, ledger crediti e rollouts.</p>
+
+    <div class=\"row\">
+      <div><label>Bearer Token</label><input id=\"token\" placeholder=\"eyJhbGciOi...\"/></div>
+      <div><label>Base URL Core</label><input id=\"base\" value=\"\" placeholder=\"http://127.0.0.1:5050\"/></div>
+      <div><label>Admin Key (opzionale)</label><input id=\"adm\" placeholder=\"CORE_ADMIN_KEY\"/></div>
+    </div>
+
+    <h2>Filtri</h2>
+    <div class=\"row\">
+      <div><label>User ID (opzionale)</label><input id=\"user_id\" placeholder=\"uuid\"/></div>
+      <div><label>Since (ISO, opzionale)</label><input id=\"since\" placeholder=\"2025-01-01T00:00:00Z\"/></div>
+      <div><label>Limit</label><input id=\"limit\" type=\"number\" value=\"50\"/></div>
+    </div>
+
+    <div class=\"actions\">
+      <button onclick=\"loadORLogs()\">OpenRouter Logs</button>
+      <button onclick=\"loadORSnapshot()\">OpenRouter Snapshot</button>
+      <button onclick=\"loadLedger()\">Credits Ledger</button>
+      <button onclick=\"loadRollouts()\">Rollout Runs</button>
+      <button onclick=\"previewRollout()\">Preview Rollout</button>
+      <button onclick=\"runRollout()\">Run Rollout</button>
+    </div>
+
+    <h2>Output</h2>
+    <pre id=\"out\"></pre>
+
+    <script>
+      function getBase(){ const raw=(document.getElementById('base').value||window.location.origin).trim(); return raw.replace(/\/+$/,''); }
+      function authHeaders(){ const t=document.getElementById('token').value.trim(); const adm=document.getElementById('adm').value.trim(); const h={'Content-Type':'application/json'}; if(t) h['Authorization']=`Bearer ${t}`; if(adm) h['X-Admin-Key']=adm; return h; }
+      function val(id){ return (document.getElementById(id).value||'').trim(); }
+      function print(obj){ document.getElementById('out').textContent = typeof obj==='string' ? obj : JSON.stringify(obj,null,2); }
+
+      async function loadORLogs(){
+        const base=getBase(); const h=authHeaders(); const uid=val('user_id'); const since=val('since'); const limit=parseInt(val('limit'))||50;
+        const url = new URL(`${base}/core/v1/admin/observability/openrouter/logs`);
+        url.searchParams.set('limit', String(limit));
+        if(uid) url.searchParams.set('user_id', uid);
+        if(since) url.searchParams.set('since', since);
+        const r = await fetch(url.toString(), { headers:h }); print(await r.json());
+      }
+      async function loadORSnapshot(){
+        const base=getBase(); const h=authHeaders(); const uid=val('user_id'); if(!uid) return print('Inserisci user_id');
+        const url = new URL(`${base}/core/v1/admin/observability/openrouter/snapshot`);
+        url.searchParams.set('user_id', uid);
+        const r = await fetch(url.toString(), { headers:h }); print(await r.json());
+      }
+      async function loadLedger(){
+        const base=getBase(); const h=authHeaders(); const uid=val('user_id'); const since=val('since'); const limit=parseInt(val('limit'))||100;
+        const url = new URL(`${base}/core/v1/admin/observability/credits/ledger`);
+        url.searchParams.set('limit', String(limit));
+        if(uid) url.searchParams.set('user_id', uid);
+        if(since) url.searchParams.set('since', since);
+        const r = await fetch(url.toString(), { headers:h }); print(await r.json());
+      }
+      async function loadRollouts(){
+        const base=getBase(); const h=authHeaders(); const limit=parseInt(val('limit'))||50;
+        const url = new URL(`${base}/core/v1/admin/observability/rollouts`);
+        url.searchParams.set('limit', String(limit));
+        const r = await fetch(url.toString(), { headers:h }); print(await r.json());
+      }
+      async function previewRollout(){
+        const base=getBase(); const h=authHeaders();
+        const r = await fetch(`${base}/core/v1/admin/observability/rollout/preview`, { method:'POST', headers:h }); print(await r.json());
+      }
+      async function runRollout(){
+        const base=getBase(); const h=authHeaders();
+        const ok = confirm('Confermi esecuzione rollout?'); if(!ok) return;
+        const r = await fetch(`${base}/core/v1/admin/observability/rollout/run`, { method:'POST', headers:h }); print(await r.json());
+      }
+
+      // Imposta base di default
+      try{ const savedBase = localStorage.getItem('flowstarter_base_url'); if(savedBase) document.getElementById('base').value = savedBase; else document.getElementById('base').value = window.location.origin; }catch(_){ }
+    </script>
+  </body>
+</html>
+    """

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from fastapi import APIRouter, Header, Query, HTTPException
+from fastapi import APIRouter, Header, Query, HTTPException, status
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 
@@ -70,6 +70,39 @@ async def _supabase_upsert_pricing_config(app_id: str, config: Dict) -> bool:
         r = await client.post(f"{supabase_url}/rest/v1/pricing_configs", headers=headers, json=payload)
     return r.status_code in (200, 201)
 
+
+async def _supabase_list_all_pricing_configs() -> Optional[List[Dict]]:
+    """Ritorna tutte le righe di pricing_configs da Supabase (app_id, config).
+
+    Returns:
+        Lista di dict con chiavi: app_id, config. None se non configurato o errore.
+    """
+    supabase_url = os.environ.get("SUPABASE_URL")
+    service_key = os.environ.get("SUPABASE_SERVICE_KEY")
+    if not supabase_url or not service_key:
+        return None
+    headers = {
+        "apikey": service_key,
+        "Authorization": f"Bearer {service_key}",
+        "Accept": "application/json",
+    }
+    async with httpx.AsyncClient(timeout=12.0) as client:
+        r = await client.get(f"{supabase_url}/rest/v1/pricing_configs?select=app_id,config", headers=headers)
+    if r.status_code != 200:
+        return None
+    rows = r.json() or []
+    # Normalizza config a dict
+    out: List[Dict] = []
+    for row in rows:
+        cfg = row.get("config")
+        if not isinstance(cfg, dict):
+            try:
+                cfg = json.loads(cfg)
+            except Exception:
+                cfg = {}
+        out.append({"app_id": row.get("app_id"), "config": cfg})
+    return out
+
 # --- Pydantic Models for API ---
 class FixedCostAPI(BaseModel):
     name: str
@@ -83,16 +116,36 @@ class PricingConfigAPI(BaseModel):
     minimum_operation_cost_credits: float
     flow_costs_usd: Dict[str, float] = {}
     signup_initial_credits: float
-    minimum_affordability_per_app: Dict[str, float] = {}
+    # Rollout & scheduler
+    rollout_interval: str = "monthly"
+    rollout_credits_per_period: int = 0
+    rollout_max_credits_rollover: int = 0
+    rollout_proration: str = "none"
+    rollout_percentage: float = 100.0
+    rollout_scheduler_enabled: bool = False
+    rollout_scheduler_time_utc: str = "03:00"
+    # Discounts & business
+    plan_discounts_percent: Dict[str, float] = {}
+    signup_initial_credits_cost_usd: float = 0.0
+    # Revenue recognition
+    unused_credits_recognized_as_revenue: bool = True
 
 # --- API Endpoints ---
 @router.get("/pricing/config", response_model=PricingConfigAPI)
 async def get_pricing_config(
-    Authorization: str = Header(...),
+    Authorization: Optional[str] = Header(default=None),
+    X_Admin_Key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
     app_id: Optional[str] = Query(default=None)
 ):
     """Recupera la configurazione di pricing corrente."""
-    await auth_backend.get_current_user(Authorization.replace("Bearer ", ""))
+    # Admin key bypass o token utente richiesto
+    core_admin_key = os.environ.get("CORE_ADMIN_KEY")
+    if not (X_Admin_Key and core_admin_key and X_Admin_Key == core_admin_key):
+        if not Authorization:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
+        token = Authorization.replace("Bearer ", "")
+        await auth_backend.get_current_user(token)
+    
     app = app_id or os.environ.get("CORE_APP_ID", "default")
 
     # 1) Prova Supabase per config per-app
@@ -120,17 +173,25 @@ async def get_pricing_config(
         "minimum_operation_cost_credits": float(cfg_json.get("minimum_operation_cost_credits", 0.0) or 0.01),
         "flow_costs_usd": cfg_json.get("flow_costs_usd", {}),
         "signup_initial_credits": float(cfg_json.get("signup_initial_credits", 0.0) or 0.0),
-        "minimum_affordability_per_app": cfg_json.get("minimum_affordability_per_app", {}),
+        # Campo legacy rimosso dalle risposte
     }
 
 @router.put("/pricing/config", response_model=PricingConfigAPI)
 async def update_pricing_config(
     new_config: PricingConfigAPI,
-    Authorization: str = Header(...),
+    Authorization: Optional[str] = Header(default=None),
+    X_Admin_Key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
     app_id: Optional[str] = Query(default=None)
 ):
     """Aggiorna e salva la configurazione di pricing."""
-    await auth_backend.get_current_user(Authorization.replace("Bearer ", ""))
+    # Admin key bypass o token utente richiesto
+    core_admin_key = os.environ.get("CORE_ADMIN_KEY")
+    if not (X_Admin_Key and core_admin_key and X_Admin_Key == core_admin_key):
+        if not Authorization:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
+        token = Authorization.replace("Bearer ", "")
+        await auth_backend.get_current_user(token)
+    
     app = app_id or os.environ.get("CORE_APP_ID", "default")
 
     # 1) Salva su Supabase (fonte di verità)
@@ -150,5 +211,5 @@ async def update_pricing_config(
         "minimum_operation_cost_credits": updated.minimum_operation_cost_credits,
         "flow_costs_usd": updated.flow_costs_usd,
         "signup_initial_credits": getattr(updated, "signup_initial_credits", 0.0),
-        "minimum_affordability_per_app": getattr(updated, "minimum_affordability_per_app", {}),
+        # Campo legacy non più ritornato
     }
