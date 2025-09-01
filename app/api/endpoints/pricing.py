@@ -116,14 +116,6 @@ class PricingConfigAPI(BaseModel):
     minimum_operation_cost_credits: float
     flow_costs_usd: Dict[str, float] = {}
     signup_initial_credits: float
-    # Rollout & scheduler
-    rollout_interval: str = "monthly"
-    rollout_credits_per_period: int = 0
-    rollout_max_credits_rollover: int = 0
-    rollout_proration: str = "none"
-    rollout_percentage: float = 100.0
-    rollout_scheduler_enabled: bool = False
-    rollout_scheduler_time_utc: str = "03:00"
     # Discounts & business
     plan_discounts_percent: Dict[str, float] = {}
     signup_initial_credits_cost_usd: float = 0.0
@@ -165,6 +157,13 @@ async def get_pricing_config(
             "minimum_affordability_credits": getattr(cfg, "minimum_affordability_credits", 0.0),
         }
 
+    # Filtra campi legacy di rollout per evitare confusione con billing_configs
+    for k in [
+        'rollout_interval', 'rollout_credits_per_period', 'rollout_max_credits_rollover',
+        'rollout_proration', 'rollout_percentage', 'rollout_scheduler_enabled', 'rollout_scheduler_time_utc'
+    ]:
+        cfg_json.pop(k, None)
+
     return {
         "monthly_revenue_target_usd": float(cfg_json.get("monthly_revenue_target_usd", 0.0) or 0.0),
         "fixed_monthly_costs_usd": cfg_json.get("fixed_monthly_costs_usd", []),
@@ -173,7 +172,6 @@ async def get_pricing_config(
         "minimum_operation_cost_credits": float(cfg_json.get("minimum_operation_cost_credits", 0.0) or 0.01),
         "flow_costs_usd": cfg_json.get("flow_costs_usd", {}),
         "signup_initial_credits": float(cfg_json.get("signup_initial_credits", 0.0) or 0.0),
-        # Campo legacy rimosso dalle risposte
     }
 
 @router.put("/pricing/config", response_model=PricingConfigAPI)

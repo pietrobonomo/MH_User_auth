@@ -75,14 +75,7 @@ class PricingConfig:
     # Soglie minime di affordability per app: app_id -> credits richiesti
     minimum_affordability_per_app: Dict[str, float] = field(default_factory=dict)
 
-    # Rollout: parametri di business e scheduler
-    rollout_interval: str = "monthly"  # monthly|weekly|custom
-    rollout_credits_per_period: int = 0  # se >0 override dei crediti del piano
-    rollout_max_credits_rollover: int = 0  # 0 = nessun cap; >0 = cap saldo
-    rollout_proration: str = "none"  # none|prorata|cliff
-    rollout_percentage: float = 100.0  # soft rollout (0-100)
-    rollout_scheduler_enabled: bool = False
-    rollout_scheduler_time_utc: str = "03:00"  # HH:MM
+    # Rollout: rimosso dal modello operativo (gestito per-piano in billing_configs)
 
     # Sconti e pacchetti (business)
     plan_discounts_percent: Dict[str, float] = field(default_factory=dict)  # plan_id -> percentuale sconto
@@ -191,6 +184,13 @@ class AdvancedPricingSystem:
         cfg_obj = config or self.config
         try:
             payload = asdict(cfg_obj)
+            # Filtra eventuali chiavi legacy di rollout per evitare duplicazioni con billing_configs
+            for k in [
+                'rollout_interval', 'rollout_credits_per_period', 'rollout_max_credits_rollover',
+                'rollout_proration', 'rollout_percentage', 'rollout_scheduler_enabled', 'rollout_scheduler_time_utc'
+            ]:
+                if k in payload:
+                    payload.pop(k, None)
             headers = {
                 "apikey": service_key,
                 "Authorization": f"Bearer {service_key}",
@@ -214,6 +214,14 @@ class AdvancedPricingSystem:
 
     def update_config(self, new_config_data: Dict[str, Any]) -> PricingConfig:
         """Aggiorna la configurazione e la salva."""
+        # Filtra chiavi legacy di rollout dal payload in ingresso
+        for k in [
+            'rollout_interval', 'rollout_credits_per_period', 'rollout_max_credits_rollover',
+            'rollout_proration', 'rollout_percentage', 'rollout_scheduler_enabled', 'rollout_scheduler_time_utc'
+        ]:
+            if k in new_config_data:
+                new_config_data.pop(k, None)
+
         # Crea una nuova istanza di PricingConfig partendo dai dati forniti
         if 'fixed_monthly_costs_usd' in new_config_data:
             new_config_data['fixed_monthly_costs_usd'] = [FixedCost(**cost) for cost in new_config_data['fixed_monthly_costs_usd']]

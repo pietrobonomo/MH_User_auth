@@ -277,12 +277,14 @@ const BillingComponent = {
                 rule: {
                     type: rolloutType,
                     value: rolloutValue,
-                    ...(rolloutMax ? { max_carryover: rolloutMax } : {})
+                    ...(rolloutMax !== undefined && !isNaN(rolloutMax) ? { max_carryover: rolloutMax } : {})
                 }
             };
         } else {
             planData.rollout = { enabled: false };
         }
+        
+        console.log('Saving plan with rollout data:', planData);
         
         // Validazione
         if (!planData.id) {
