@@ -1,11 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from typing import Dict
 import os
 from dotenv import load_dotenv
 import asyncio
 from datetime import datetime, timedelta, timezone
 import httpx
+from pathlib import Path
 
 from app.api.router import api_router
 
@@ -35,6 +37,11 @@ app.add_middleware(
 
 # Monta router principale
 app.include_router(api_router, prefix="/core/v1")
+
+# Monta file statici per la dashboard
+static_path = Path(__file__).parent / "static"
+if static_path.exists():
+    app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
 
 @app.get("/health")
 async def health() -> Dict[str, str]:

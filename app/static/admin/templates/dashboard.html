@@ -1,0 +1,176 @@
+<!doctype html>
+<html data-theme="corporate">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <title>Flow Starter - Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.23/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        .sidebar-link { transition: all 0.2s; }
+        .sidebar-link:hover { background: rgba(59, 130, 246, 0.1); }
+        .sidebar-link.active { background: rgba(59, 130, 246, 0.15); border-left: 3px solid #3b82f6; }
+        .content-area { min-height: calc(100vh - 4rem); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .metric-card { transition: transform 0.2s; }
+        .metric-card:hover { transform: translateY(-2px); }
+        .loading { opacity: 0.6; pointer-events: none; }
+        pre.json { max-height: 500px; overflow: auto; }
+        .accordion-content { max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out; }
+        .accordion-content.active { max-height: 500px; }
+    </style>
+</head>
+<body>
+    <div class="drawer lg:drawer-open">
+        <input id="drawer-toggle" type="checkbox" class="drawer-toggle" />
+        
+        <!-- Main Content -->
+        <div class="drawer-content flex flex-col">
+            <!-- Navbar -->
+            <div class="navbar bg-base-100 shadow-md lg:hidden">
+                <div class="flex-none">
+                    <label for="drawer-toggle" class="btn btn-square btn-ghost">
+                        <i class="fas fa-bars text-xl"></i>
+                    </label>
+                </div>
+                <div class="flex-1">
+                    <span class="text-xl font-bold">Flow Starter</span>
+                </div>
+            </div>
+            
+            <!-- Content Area -->
+            <div class="content-area bg-base-200 p-4 lg:p-6">
+                <div id="main-content" class="max-w-7xl mx-auto">
+                    <!-- Il contenuto verrà caricato dinamicamente -->
+                    <div class="flex items-center justify-center h-96">
+                        <span class="loading loading-spinner loading-lg"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Sidebar -->
+        <div class="drawer-side">
+            <label for="drawer-toggle" class="drawer-overlay"></label>
+            <aside class="w-64 min-h-full bg-base-100 text-base-content">
+                <!-- Logo -->
+                <div class="p-4 border-b">
+                    <h2 class="text-2xl font-bold text-primary">Flow Starter</h2>
+                    <p class="text-sm text-base-content/60">Admin Dashboard</p>
+                </div>
+                
+                <!-- Navigation -->
+                <ul class="menu p-2">
+                    <!-- Overview -->
+                    <li>
+                        <a href="#" class="sidebar-link" data-page="overview">
+                            <i class="fas fa-home w-5"></i>
+                            <span>Overview</span>
+                        </a>
+                    </li>
+                    
+                    <!-- Business & Pricing -->
+                    <li>
+                        <details id="business-accordion">
+                            <summary class="sidebar-link">
+                                <i class="fas fa-chart-line w-5"></i>
+                                <span>Business & Pricing</span>
+                            </summary>
+                            <ul class="ml-4">
+                                <li><a href="#" data-page="business-config">Revenue Configuration</a></li>
+                                <li><a href="#" data-page="business-costs">App Affordability</a></li>
+                                <li><a href="#" data-page="business-simulator">Pricing Simulator</a></li>
+                                <li><a href="#" data-page="business-scenarios">Scenarios</a></li>
+                            </ul>
+                        </details>
+                    </li>
+                    
+                    <!-- Billing & Plans -->
+                    <li>
+                        <details id="billing-accordion">
+                            <summary class="sidebar-link">
+                                <i class="fas fa-credit-card w-5"></i>
+                                <span>Billing & Plans</span>
+                            </summary>
+                            <ul class="ml-4">
+                                <li><a href="#" data-page="billing-plans">Subscription Plans</a></li>
+                                <li><a href="#" data-page="billing-credits">Credits & Rollout</a></li>
+                                <li><a href="#" data-page="billing-checkout">Checkout</a></li>
+                            </ul>
+                        </details>
+                    </li>
+                    
+                    <!-- Observability -->
+                    <li>
+                        <details id="observability-accordion">
+                            <summary class="sidebar-link">
+                                <i class="fas fa-chart-bar w-5"></i>
+                                <span>Observability</span>
+                            </summary>
+                            <ul class="ml-4">
+                                <li><a href="#" data-page="observe-ai">AI Usage</a></li>
+                                <li><a href="#" data-page="observe-credits">Credits Ledger</a></li>
+                                <li><a href="#" data-page="observe-rollouts">Rollout Manager</a></li>
+                            </ul>
+                        </details>
+                    </li>
+                    
+                    <!-- Configuration -->
+                    <li>
+                        <details id="config-accordion">
+                            <summary class="sidebar-link">
+                                <i class="fas fa-cog w-5"></i>
+                                <span>Configuration</span>
+                            </summary>
+                            <ul class="ml-4">
+                                <li><a href="#" data-page="config-flows">Flow Mappings</a></li>
+                                <li><a href="#" data-page="billing-provider">Payment Provider</a></li>
+                                <li><a href="#" data-page="config-security">Security</a></li>
+                                <li><a href="#" data-page="config-setup">Initial Setup</a></li>
+                            </ul>
+                        </details>
+                    </li>
+                    
+                    <!-- Testing -->
+                    <li>
+                        <a href="#" class="sidebar-link" data-page="testing">
+                            <i class="fas fa-flask w-5"></i>
+                            <span>Testing</span>
+                        </a>
+                    </li>
+                </ul>
+                
+                <!-- Bottom Actions -->
+                <div class="p-4 mt-auto border-t">
+                    <button class="btn btn-sm btn-ghost w-full" onclick="clearAllData()">
+                        <i class="fas fa-trash"></i>
+                        Clear Local Data
+                    </button>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast toast-end toast-bottom" id="toast-container"></div>
+
+    
+    <!-- Loading overlay -->
+    <div id="loading-overlay" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" style="display: none;">
+        <span class="loading loading-spinner loading-lg text-primary"></span>
+    </div>
+    
+    <!-- Scripts modulari -->
+    <script src="/static/admin/js/state.js"></script>
+    <script src="/static/admin/js/api.js"></script>
+    <script src="/static/admin/js/utils.js"></script>
+    <script src="/static/admin/js/components/pricing.js"></script>
+    <script src="/static/admin/js/components/billing.js"></script>
+    <script src="/static/admin/js/components/observability.js"></script>
+    <script src="/static/admin/js/components/configuration.js"></script>
+    <script src="/static/admin/js/components/testing.js"></script>
+    <script src="/static/admin/js/dashboard.js"></script>
+</body>
+</html>
