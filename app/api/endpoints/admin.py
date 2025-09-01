@@ -340,7 +340,13 @@ async def list_users(
 class BillingConfigAPI(BaseModel):
     provider: str = Field(default="lemonsqueezy")
     lemonsqueezy: Optional[Dict[str, Any]] = None  # { store_id, webhook_secret }
-    plans: Optional[List[Dict[str, Any]]] = None   # [{ id, name, variant_id, price_usd, credits_per_month }]
+    plans: Optional[List[Dict[str, Any]]] = None   # [{ id, name, variant_id, price_usd, credits_per_month, rollout?: {enabled, interval, rule} }]
+    # Flag e regole globali per rollout (opzionali)
+    rollout_fallback_enabled: Optional[bool] = None
+    default_rollover_rule: Optional[Dict[str, Any]] = None  # { type: fixed|percent, value: number, max_carryover?: number }
+    default_rollover_interval: Optional[str] = None  # monthly|weekly|daily|yearly (default: monthly)
+    # Flag BI globali (opzionali)
+    bi_flags: Optional[Dict[str, Any]] = None  # { track_burned_credits: bool }
 
 
 @router.get("/billing/config")

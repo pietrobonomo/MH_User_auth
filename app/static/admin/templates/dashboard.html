@@ -8,6 +8,32 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
+        .input-group {
+            display: flex;
+            align-items: stretch;
+        }
+        .input-group > span {
+            display: flex;
+            align-items: center;
+            white-space: nowrap;
+            border-radius: 0 var(--rounded-btn, 0.5rem) var(--rounded-btn, 0.5rem) 0;
+        }
+        .input-group > input {
+            border-radius: var(--rounded-btn, 0.5rem) 0 0 var(--rounded-btn, 0.5rem);
+        }
+        .rollout-config {
+            transition: all 0.3s ease;
+        }
+        .card.ring-success {
+            animation: pulse-success 0.5s ease;
+        }
+        @keyframes pulse-success {
+            0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(34, 197, 94, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+        }
+    </style>
+    <style>
         .sidebar-link { transition: all 0.2s; }
         .sidebar-link:hover { background: rgba(59, 130, 246, 0.1); }
         .sidebar-link.active { background: rgba(59, 130, 246, 0.15); border-left: 3px solid #3b82f6; }

@@ -417,29 +417,12 @@ window.pageTemplates = {
                 </div>
                 
                 <div id="tab-plans" class="tab-content active">
-                    <div class="card bg-base-100 shadow-xl">
-                        <div class="card-body">
-                            <h2 class="card-title">Active Plans</h2>
-                            <table class="table w-full">
-                                <thead>
-                                    <tr>
-                                        <th>Plan ID</th>
-                                        <th>Name</th>
-                                        <th>Type</th>
-                                        <th>Price</th>
-                                        <th>Credits</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="plans-table">
-                                    <!-- Dynamic content -->
-                                </tbody>
-                            </table>
-                            <button class="btn btn-sm btn-primary mt-4" onclick="addPlanRow()">
-                                <i class="fas fa-plus"></i> Add Plan
-                            </button>
-                        </div>
+                    <div id="plans-container">
+                        <!-- Dynamic plan cards will be added here -->
                     </div>
+                    <button class="btn btn-primary mt-4" onclick="BillingComponent.addNewPlan()">
+                        <i class="fas fa-plus"></i> Add New Plan
+                    </button>
                 </div>
                 
                 <div id="tab-discounts" class="tab-content">
@@ -524,7 +507,23 @@ window.pageTemplates = {
                                     <input type="number" class="input input-bordered" id="rollout_percentage" value="100" />
                                 </div>
                             </div>
-                            <div class="card-actions justify-end mt-4">
+                            <div class="card-actions justify-between mt-4">
+                                <div class="flex items-center gap-4">
+                                    <div class="form-control">
+                                        <label class="label cursor-pointer">
+                                            <span class="label-text">Enable Global Fallback</span>
+                                            <input id="rollout_fallback_enabled" type="checkbox" class="toggle toggle-primary ml-3" />
+                                        </label>
+                                    </div>
+                                    <div class="grid grid-cols-3 gap-2">
+                                        <select id="default_rollover_type" class="select select-bordered select-sm">
+                                            <option value="fixed">Fixed</option>
+                                            <option value="percent">Percent</option>
+                                        </select>
+                                        <input id="default_rollover_value" type="number" step="0.01" class="input input-bordered input-sm" placeholder="value" />
+                                        <input id="default_rollover_max" type="number" step="1" class="input input-bordered input-sm" placeholder="max carryover" />
+                                    </div>
+                                </div>
                                 <button class="btn btn-primary" onclick="saveCreditsAndRolloutConfig()">Save Configuration</button>
                             </div>
                         </div>
