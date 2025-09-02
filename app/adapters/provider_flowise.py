@@ -25,36 +25,48 @@ class FlowiseAdapter:
         self._api_key_cache = None
 
     async def _get_base_url(self) -> Optional[str]:
-        """Ottiene base URL da credentials criptate o fallback env."""
+        """Ottiene base URL con priorità: ENV > credentials criptate."""
         if self._base_url_cache:
             return self._base_url_cache
         
+        # 1) ENV
+        env_url = os.environ.get("FLOWISE_BASE_URL")
+        if env_url:
+            self._base_url_cache = env_url
+            return env_url
+
+        # 2) CREDENTIALS MANAGER (criptate)
         if self.credentials_manager:
             url = await self.credentials_manager.get_credential("flowise", "base_url")
             if url:
                 self._base_url_cache = url
                 return url
-        
-        # Fallback a env
-        fallback = os.environ.get("FLOWISE_BASE_URL")
-        self._base_url_cache = fallback
-        return fallback
+
+        # 3) Ultimo fallback
+        self._base_url_cache = None
+        return None
 
     async def _get_api_key(self) -> Optional[str]:
-        """Ottiene API key da credentials criptate o fallback env."""
+        """Ottiene API key con priorità: ENV > credentials criptate."""
         if self._api_key_cache:
             return self._api_key_cache
         
+        # 1) ENV
+        env_key = os.environ.get("FLOWISE_API_KEY")
+        if env_key:
+            self._api_key_cache = env_key
+            return env_key
+
+        # 2) CREDENTIALS MANAGER (criptate)
         if self.credentials_manager:
             key = await self.credentials_manager.get_credential("flowise", "api_key")
             if key:
                 self._api_key_cache = key
                 return key
-        
-        # Fallback a env
-        fallback = os.environ.get("FLOWISE_API_KEY")
-        self._api_key_cache = fallback
-        return fallback
+
+        # 3) Ultimo fallback
+        self._api_key_cache = None
+        return None
 
     async def execute(self, user_id: str, flow_id: str, data: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         base_url = await self._get_base_url()

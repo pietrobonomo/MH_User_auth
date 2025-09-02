@@ -36,7 +36,8 @@ function navigate(page, tab = null) {
         'config-flows': 'config-accordion',
         'config-security': 'config-accordion',
         'config-setup': 'config-accordion',
-        'testing': null
+        'testing': null,
+        'guides': null
     };
     
     const targetAccordion = accordionMap[page];
@@ -405,6 +406,27 @@ document.addEventListener('DOMContentLoaded', () => {
     window.ObservabilityComponent = ObservabilityComponent;
     window.ConfigurationComponent = ConfigurationComponent;
     window.TestingComponent = TestingComponent;
+    
+    // Bind guides functions to window
+    window.showExampleTab = function(tab) {
+        // Hide all example tabs
+        const tabs = ['react', 'python', 'curl'];
+        tabs.forEach(t => {
+            const el = document.getElementById(`example-${t}`);
+            if (el) el.classList.add('hidden');
+        });
+        
+        // Show selected tab
+        const targetEl = document.getElementById(`example-${tab}`);
+        if (targetEl) targetEl.classList.remove('hidden');
+        
+        // Update tab active state - trova il parent .tabs e aggiorna solo quelli
+        const clickedTab = event?.target;
+        if (clickedTab && clickedTab.closest('.tabs')) {
+            clickedTab.closest('.tabs').querySelectorAll('.tab').forEach(t => t.classList.remove('tab-active'));
+            clickedTab.classList.add('tab-active');
+        }
+    };
     
     // Load initial page
     navigate('overview');

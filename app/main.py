@@ -9,10 +9,10 @@ from datetime import datetime, timedelta, timezone
 import httpx
 from pathlib import Path
 
-from app.api.router import api_router
-
-# Carica variabili da .env se presente
+# Carica variabili da .env PRIMA di importare router/endpoints che le usano
 load_dotenv()
+
+from app.api.router import api_router
 
 app = FastAPI(
     title="Flow Starter Core API",

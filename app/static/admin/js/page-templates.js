@@ -1406,3 +1406,1596 @@ window.pageTemplates = {
                 </div>
             `
         };
+
+        // Guides - Developer Documentation
+        window.pageTemplates['guides'] = () => {
+            return `
+                <div class="space-y-6">
+                    <div class="flex items-center gap-3">
+                        <i class="fas fa-book text-2xl text-primary"></i>
+                        <div>
+                            <h1 class="text-3xl font-bold">Developer Guides</h1>
+                            <p class="text-base-content/60">Documentazione completa degli endpoint e guida allo sviluppo</p>
+                        </div>
+                    </div>
+
+                    <!-- Navigation Tabs -->
+                    <div class="tabs tabs-boxed mb-6">
+                        <a href="#" class="tab tab-active" data-tab="api-reference">API Reference</a>
+                        <a href="#" class="tab" data-tab="development-guide">Development Guide</a>
+                        <a href="#" class="tab" data-tab="architecture">Architecture</a>
+                        <a href="#" class="tab" data-tab="examples">Examples</a>
+                    </div>
+
+                    <!-- API Reference Tab -->
+                    <div id="tab-api-reference" class="tab-content active">
+                        <div class="grid grid-cols-1 gap-6">
+                            
+                            <!-- Essential Endpoints -->
+                            <div class="card bg-base-100 shadow-xl">
+                                <div class="card-body">
+                                    <h2 class="card-title text-primary">
+                                        <i class="fas fa-rocket"></i>
+                                        Endpoint Essenziali (per la tua app)
+                                    </h2>
+                                    
+                                    <div class="alert alert-info mb-4">
+                                        <i class="fas fa-info-circle"></i>
+                                        <div>
+                                            <p><strong>Endpoint per App Client</strong></p>
+                                            <p class="text-sm mt-1">Questi endpoint sono pensati per essere chiamati dalle tue applicazioni frontend/client. Tutti richiedono autenticazione utente.</p>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="space-y-4">
+                                        <!-- THE Main Endpoint -->
+                                        <div class="collapse collapse-arrow bg-gradient-to-r from-primary/10 to-secondary/10 border border-primary/20">
+                                            <input type="checkbox" />
+                                            <div class="collapse-title font-medium">
+                                                <span class="badge badge-primary badge-lg mr-2">⭐ POST</span>
+                                                /core/v1/providers/flowise/execute
+                                                <span class="badge badge-success badge-sm ml-2">MAIN ENDPOINT</span>
+                                            </div>
+                                            <div class="collapse-content">
+                                                <div class="space-y-2">
+                                                    <p><strong>🎯 L'endpoint che fa tutto:</strong> Esegue AI, gestisce crediti, pricing automatico</p>
+                                                    <p><strong>Headers:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">Authorization: Bearer &lt;user_token&gt;
+Content-Type: application/json</pre>
+                                                    <div class="alert alert-info mt-2">
+                                                        <i class="fas fa-info-circle"></i>
+                                                        <div class="text-sm">
+                                                            <p><strong>App ID:</strong> Opzionale per single-tenant, richiesto per multi-tenant</p>
+                                                            <ul class="list-disc list-inside mt-1">
+                                                                <li><strong>Single-tenant:</strong> Flow Starter usa <code>CORE_APP_ID</code> dall'ambiente</li>
+                                                                <li><strong>Multi-tenant:</strong> Aggiungi <code>X-App-Id: my-app</code> header</li>
+                                                            </ul>
+                                                        </div>
+                                                    </div>
+                                                    <p><strong>Body (semplicissimo):</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">{
+  "flow_key": "content_generator",
+  "data": {
+    "prompt": "Scrivi un post LinkedIn su AI marketing"
+  }
+}</pre>
+                                                    <p><strong>Risposta (tutto quello che ti serve):</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">{
+  "result": {
+    "text": "🚀 L'AI sta rivoluzionando il marketing...",
+    "metadata": {...}
+  }
+  // Flow Starter gestisce pricing/crediti automaticamente
+}</pre>
+                                                    <p><strong>Errore crediti (402):</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">{
+  "error_type": "insufficient_credits",
+  "shortage": 2.5,
+  "minimum_required": 5.0
+}
+// → Redirect utente a /pricing</pre>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Credits Balance -->
+                                        <div class="collapse collapse-arrow bg-base-200">
+                                            <input type="checkbox" />
+                                            <div class="collapse-title font-medium">
+                                                <span class="badge badge-success badge-sm mr-2">GET</span>
+                                                /core/v1/credits/balance
+                                                <span class="badge badge-ghost badge-sm ml-2">opzionale</span>
+                                            </div>
+                                            <div class="collapse-content">
+                                                <div class="space-y-2">
+                                                    <p><strong>Quando usarlo:</strong> Per mostrare saldo crediti nell'UI</p>
+                                                    <p><strong>Headers:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">Authorization: Bearer &lt;user_token&gt;</pre>
+                                                    <p><strong>Risposta:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">{ "credits": 1500.50 }</pre>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Checkout -->
+                                        <div class="collapse collapse-arrow bg-base-200">
+                                            <input type="checkbox" />
+                                            <div class="collapse-title font-medium">
+                                                <span class="badge badge-info badge-sm mr-2">POST</span>
+                                                /core/v1/billing/checkout
+                                                <span class="badge badge-ghost badge-sm ml-2">quando servono crediti</span>
+                                            </div>
+                                            <div class="collapse-content">
+                                                <div class="space-y-2">
+                                                    <p><strong>Quando usarlo:</strong> Per acquistare crediti quando finiscono</p>
+                                                    <p><strong>Headers:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">Authorization: Bearer &lt;user_token&gt;
+Content-Type: application/json</pre>
+                                                    <p><strong>Body:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">{
+  "credits": 5000,
+  "amount_usd": 19.0
+}</pre>
+                                                    <p><strong>Risposta:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">{
+  "checkout_url": "https://lemonsqueezy.com/checkout/..."
+}
+// → Redirect utente a checkout_url</pre>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Advanced/Debug Endpoints -->
+                            <div class="card bg-base-100 shadow-xl">
+                                <div class="card-body">
+                                    <h2 class="card-title text-secondary">
+                                        <i class="fas fa-tools"></i>
+                                        Endpoint Avanzati (debug/testing)
+                                    </h2>
+                                    
+                                    <div class="alert alert-warning mb-4">
+                                        <i class="fas fa-exclamation-triangle"></i>
+                                        <span>Questi endpoint sono per debug, testing o casi speciali. Normalmente non li userai.</span>
+                                    </div>
+                                    
+                                    <div class="space-y-4">
+                                        <!-- OpenRouter Chat -->
+                                        <div class="collapse collapse-arrow bg-base-200">
+                                            <input type="checkbox" />
+                                            <div class="collapse-title font-medium">
+                                                <span class="badge badge-info badge-sm mr-2">POST</span>
+                                                /core/v1/providers/openrouter/chat
+                                            </div>
+                                            <div class="collapse-content">
+                                                <div class="space-y-2">
+                                                    <p><strong>Descrizione:</strong> Esegue chat completion via OpenRouter con addebito automatico crediti</p>
+                                                    <p><strong>Headers:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">Authorization: Bearer &lt;supabase_token&gt;
+Content-Type: application/json
+Idempotency-Key: &lt;optional_unique_key&gt;</pre>
+                                                    <p><strong>Body:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">{
+  "model": "openrouter/gpt-4o-mini",
+  "messages": [
+    {"role": "user", "content": "Ciao, come stai?"}
+  ],
+  "options": {
+    "temperature": 0.7,
+    "max_tokens": 1000
+  }
+}</pre>
+                                                    <p><strong>Risposta:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">{
+  "response": {
+    "choices": [{
+      "message": {
+        "role": "assistant",
+        "content": "Ciao! Sto bene, grazie..."
+      }
+    }]
+  },
+  "usage": {
+    "input_tokens": 15,
+    "output_tokens": 25,
+    "cost_credits": 2.5
+  },
+  "transaction_id": "txn_abc123"
+}</pre>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Flowise Execute -->
+                                        <div class="collapse collapse-arrow bg-base-200">
+                                            <input type="checkbox" />
+                                            <div class="collapse-title font-medium">
+                                                <span class="badge badge-info badge-sm mr-2">POST</span>
+                                                /core/v1/providers/flowise/execute
+                                            </div>
+                                            <div class="collapse-content">
+                                                <div class="space-y-2">
+                                                    <p><strong>Descrizione:</strong> Esegue workflow AI complessi via Flowise con controllo affordability e addebito reale</p>
+                                                    <p><strong>Headers:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">Authorization: Bearer &lt;supabase_token&gt;
+X-App-Id: &lt;app_identifier&gt;
+Content-Type: application/json
+Idempotency-Key: &lt;optional_unique_key&gt;</pre>
+                                                    <p><strong>Body con flow_key (consigliato):</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">{
+  "flow_key": "content_generator",
+  "data": {
+    "prompt": "Scrivi un post LinkedIn su AI",
+    "tone": "professional",
+    "length": "medium"
+  }
+}</pre>
+                                                    <p><strong>Body con flow_id diretto:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">{
+  "flow_id": "abc-123-def-456",
+  "node_names": ["chatOpenRouter_0"],
+  "data": {
+    "question": "Genera contenuto marketing"
+  }
+}</pre>
+                                                    <p><strong>Risposta successo:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">{
+  "result": {
+    "text": "Contenuto generato...",
+    "metadata": {...}
+  },
+  "pricing": {
+    "actual_cost_usd": 0.0025,
+    "actual_cost_credits": 0.25,
+    "markup_percent": 150.0,
+    "public_price_usd": 0.00625
+  },
+  "flow": {
+    "flow_id": "abc-123-def-456",
+    "flow_key": "content_generator"
+  }
+}</pre>
+                                                    <p><strong>Errore crediti insufficienti (HTTP 402):</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">{
+  "error_type": "insufficient_credits",
+  "can_afford": false,
+  "minimum_required": 1.0,
+  "available_credits": 0.5,
+  "shortage": 0.5,
+  "flow_key": "content_generator",
+  "app_id": "my-app"
+}</pre>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Flowise Affordability Check -->
+                                        <div class="collapse collapse-arrow bg-base-200">
+                                            <input type="checkbox" />
+                                            <div class="collapse-title font-medium">
+                                                <span class="badge badge-success badge-sm mr-2">GET</span>
+                                                /core/v1/providers/flowise/affordability-check
+                                            </div>
+                                            <div class="collapse-content">
+                                                <div class="space-y-2">
+                                                    <p><strong>Descrizione:</strong> Verifica se l'utente può permettersi un flow senza eseguirlo</p>
+                                                    <p><strong>Query Parameters:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">?flow_key=content_generator&as_user_id=uuid (se admin)</pre>
+                                                    <p><strong>Headers:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">Authorization: Bearer &lt;token&gt; OR X-Admin-Key: &lt;admin_key&gt;
+X-App-Id: &lt;app_identifier&gt;</pre>
+                                                    <p><strong>Risposta:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">{
+  "app_id": "my-app",
+  "minimum_required": 1.0,
+  "estimated_credits": 0.25,
+  "required_credits": 1.0,
+  "available_credits": 5.0,
+  "can_afford": true,
+  "flow_key": "content_generator",
+  "phase": "precheck_only"
+}</pre>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Flowise Pricing -->
+                                        <div class="collapse collapse-arrow bg-base-200">
+                                            <input type="checkbox" />
+                                            <div class="collapse-title font-medium">
+                                                <span class="badge badge-success badge-sm mr-2">GET</span>
+                                                /core/v1/providers/flowise/pricing
+                                            </div>
+                                            <div class="collapse-content">
+                                                <div class="space-y-2">
+                                                    <p><strong>Descrizione:</strong> Calcola il costo reale di un'esecuzione basato sul delta OpenRouter</p>
+                                                    <p><strong>Query Parameters:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">?usage_before_usd=0.1234&as_user_id=uuid (se admin)</pre>
+                                                    <p><strong>Headers:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">Authorization: Bearer &lt;token&gt; OR X-Admin-Key: &lt;admin_key&gt;</pre>
+                                                    <p><strong>Risposta:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">{
+  "status": "ready",
+  "actual_cost_usd": 0.0025,
+  "actual_cost_credits": 0.25,
+  "usage_before_usd": 0.1234,
+  "usage_after_usd": 0.1259,
+  "final_credit_multiplier": 100.0,
+  "usd_multiplier": 2.5,
+  "markup_percent": 150.0,
+  "public_price_usd": 0.00625
+}</pre>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Admin Endpoints -->
+                            <div class="card bg-base-100 shadow-xl">
+                                <div class="card-body">
+                                    <h2 class="card-title text-warning">
+                                        <i class="fas fa-shield-alt"></i>
+                                        Admin Endpoints
+                                    </h2>
+                                    <div class="alert alert-warning mb-4">
+                                        <i class="fas fa-exclamation-triangle"></i>
+                                        <span>Questi endpoint richiedono <code>X-Admin-Key</code> o token admin</span>
+                                    </div>
+                                    
+                                    <div class="space-y-4">
+                                        <!-- Flow Configs -->
+                                        <div class="collapse collapse-arrow bg-base-200">
+                                            <input type="checkbox" />
+                                            <div class="collapse-title font-medium">
+                                                <span class="badge badge-success badge-sm mr-2">GET</span>
+                                                /core/v1/admin/flow-configs
+                                            </div>
+                                            <div class="collapse-content">
+                                                <div class="space-y-2">
+                                                    <p><strong>Descrizione:</strong> Ottiene configurazione flow per app_id e flow_key</p>
+                                                    <p><strong>Query Parameters:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">?app_id=my-app&flow_key=content_generator</pre>
+                                                    <p><strong>Headers:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">X-Admin-Key: &lt;admin_key&gt;</pre>
+                                                    <p><strong>Risposta:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">{
+  "found": true,
+  "config": {
+    "app_id": "my-app",
+    "flow_key": "content_generator",
+    "flow_id": "abc-123-def-456",
+    "node_names": ["chatOpenRouter_0"]
+  }
+}</pre>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Create Flow Config -->
+                                        <div class="collapse collapse-arrow bg-base-200">
+                                            <input type="checkbox" />
+                                            <div class="collapse-title font-medium">
+                                                <span class="badge badge-info badge-sm mr-2">POST</span>
+                                                /core/v1/admin/flow-configs
+                                            </div>
+                                            <div class="collapse-content">
+                                                <div class="space-y-2">
+                                                    <p><strong>Descrizione:</strong> Crea o aggiorna configurazione flow</p>
+                                                    <p><strong>Headers:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">X-Admin-Key: &lt;admin_key&gt;
+Content-Type: application/json</pre>
+                                                    <p><strong>Body:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">{
+  "app_id": "my-app",
+  "flow_key": "content_generator",
+  "flow_id": "abc-123-def-456",
+  "node_names": ["chatOpenRouter_0"]
+}</pre>
+                                                    <p><strong>Risposta:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">{
+  "status": "ok",
+  "config": { ... }
+}</pre>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- User Creation -->
+                                        <div class="collapse collapse-arrow bg-base-200">
+                                            <input type="checkbox" />
+                                            <div class="collapse-title font-medium">
+                                                <span class="badge badge-info badge-sm mr-2">POST</span>
+                                                /core/v1/admin/users
+                                            </div>
+                                            <div class="collapse-content">
+                                                <div class="space-y-2">
+                                                    <p><strong>Descrizione:</strong> Crea nuovo utente con provisioning automatico OpenRouter</p>
+                                                    <p><strong>Headers:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">X-Admin-Key: &lt;admin_key&gt;
+Content-Type: application/json</pre>
+                                                    <p><strong>Body:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">{
+  "email": "newuser@example.com",
+  "password": "SecurePass123!",
+  "full_name": "Nome Cognome"
+}</pre>
+                                                    <p><strong>Risposta:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">{
+  "status": "success",
+  "user_id": "uuid",
+  "email": "newuser@example.com",
+  "initial_credits": 1000.0,
+  "openrouter": {
+    "provisioned": true,
+    "key_name": "user_abc123",
+    "limit": 5.0
+  }
+}</pre>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Pricing Config -->
+                                        <div class="collapse collapse-arrow bg-base-200">
+                                            <input type="checkbox" />
+                                            <div class="collapse-title font-medium">
+                                                <span class="badge badge-success badge-sm mr-2">GET</span>
+                                                <span class="badge badge-info badge-sm mr-2">PUT</span>
+                                                /core/v1/admin/pricing/config
+                                            </div>
+                                            <div class="collapse-content">
+                                                <div class="space-y-2">
+                                                    <p><strong>Descrizione:</strong> Gestisce configurazione pricing e business logic</p>
+                                                    <p><strong>Headers:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">X-Admin-Key: &lt;admin_key&gt;
+Content-Type: application/json (per PUT)</pre>
+                                                    <p><strong>Query Parameters (opzionali):</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">?app_id=my-app</pre>
+                                                    <p><strong>Body PUT:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">{
+  "monthly_revenue_target_usd": 10000.0,
+  "fixed_monthly_costs_usd": [
+    {"name": "Infrastructure", "cost_usd": 200.0},
+    {"name": "Marketing", "cost_usd": 2000.0}
+  ],
+  "usd_to_credits": 100.0,
+  "target_margin_multiplier": 2.5,
+  "minimum_operation_cost_credits": 0.01,
+  "flow_costs_usd": {
+    "content_generator": 0.005,
+    "data_analyzer": 0.015
+  },
+  "signup_initial_credits": 1000.0
+}</pre>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Billing Endpoints -->
+                            <div class="card bg-base-100 shadow-xl">
+                                <div class="card-body">
+                                    <h2 class="card-title text-accent">
+                                        <i class="fas fa-credit-card"></i>
+                                        Billing Endpoints
+                                    </h2>
+                                    
+                                    <div class="space-y-4">
+                                        <!-- Get Plans -->
+                                        <div class="collapse collapse-arrow bg-base-200">
+                                            <input type="checkbox" />
+                                            <div class="collapse-title font-medium">
+                                                <span class="badge badge-success badge-sm mr-2">GET</span>
+                                                /core/v1/billing/plans
+                                            </div>
+                                            <div class="collapse-content">
+                                                <div class="space-y-2">
+                                                    <p><strong>Descrizione:</strong> Ottiene lista piani di subscription disponibili</p>
+                                                    <p><strong>Risposta:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">{
+  "plans": [
+    {
+      "id": "starter",
+      "name": "Starter Plan",
+      "price_usd": 19.0,
+      "credits": 5000,
+      "type": "subscription",
+      "popular": false
+    },
+    {
+      "id": "pro",
+      "name": "Pro Plan", 
+      "price_usd": 79.0,
+      "credits": 25000,
+      "type": "subscription",
+      "popular": true
+    }
+  ]
+}</pre>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Create Checkout -->
+                                        <div class="collapse collapse-arrow bg-base-200">
+                                            <input type="checkbox" />
+                                            <div class="collapse-title font-medium">
+                                                <span class="badge badge-info badge-sm mr-2">POST</span>
+                                                /core/v1/billing/checkout
+                                            </div>
+                                            <div class="collapse-content">
+                                                <div class="space-y-2">
+                                                    <p><strong>Descrizione:</strong> Crea sessione di checkout per acquisto crediti</p>
+                                                    <p><strong>Headers:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">Authorization: Bearer &lt;supabase_token&gt;
+Content-Type: application/json</pre>
+                                                    <p><strong>Body:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">{
+  "credits": 5000,
+  "amount_usd": 19.0,
+  "metadata": {
+    "plan_id": "starter",
+    "customer_email": "user@example.com"
+  }
+}</pre>
+                                                    <p><strong>Risposta:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">{
+  "checkout_url": "https://lemonsqueezy.com/checkout/...",
+  "checkout_id": "checkout_abc123"
+}</pre>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Webhook -->
+                                        <div class="collapse collapse-arrow bg-base-200">
+                                            <input type="checkbox" />
+                                            <div class="collapse-title font-medium">
+                                                <span class="badge badge-info badge-sm mr-2">POST</span>
+                                                /core/v1/billing/webhook
+                                            </div>
+                                            <div class="collapse-content">
+                                                <div class="space-y-2">
+                                                    <p><strong>Descrizione:</strong> Endpoint webhook per processare pagamenti completati</p>
+                                                    <p><strong>Headers:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">X-Signature: &lt;webhook_signature&gt;
+Content-Type: application/json</pre>
+                                                    <p><strong>Configurazione:</strong></p>
+                                                    <p>Configura questo URL nel tuo provider di pagamento:</p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">https://your-domain.com/core/v1/billing/webhook</pre>
+                                                    <p>Per sviluppo locale con ngrok:</p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">https://abc123.ngrok.io/core/v1/billing/webhook</pre>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Setup Endpoints -->
+                            <div class="card bg-base-100 shadow-xl">
+                                <div class="card-body">
+                                    <h2 class="card-title text-info">
+                                        <i class="fas fa-cog"></i>
+                                        Setup & Configuration Endpoints
+                                    </h2>
+                                    
+                                    <div class="space-y-4">
+                                        <!-- Setup Status -->
+                                        <div class="collapse collapse-arrow bg-base-200">
+                                            <input type="checkbox" />
+                                            <div class="collapse-title font-medium">
+                                                <span class="badge badge-success badge-sm mr-2">GET</span>
+                                                /core/v1/setup/status
+                                            </div>
+                                            <div class="collapse-content">
+                                                <div class="space-y-2">
+                                                    <p><strong>Descrizione:</strong> Verifica stato del setup iniziale</p>
+                                                    <p><strong>Risposta:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">{
+  "setup_completed": true,
+  "supabase_configured": true,
+  "admin_key_configured": true,
+  "credentials_encrypted": true,
+  "flowise_configured": true,
+  "next_action": "configure_plans"
+}</pre>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Complete Setup -->
+                                        <div class="collapse collapse-arrow bg-base-200">
+                                            <input type="checkbox" />
+                                            <div class="collapse-title font-medium">
+                                                <span class="badge badge-info badge-sm mr-2">POST</span>
+                                                /core/v1/setup/complete-setup
+                                            </div>
+                                            <div class="collapse-content">
+                                                <div class="space-y-2">
+                                                    <p><strong>Descrizione:</strong> Completa setup iniziale con tutte le credenziali</p>
+                                                    <p><strong>Body:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">{
+  "supabase_url": "https://xxx.supabase.co",
+  "supabase_service_key": "eyJhbGciOi...",
+  "lemonsqueezy_api_key": "eyJ0eXAiOi...",
+  "lemonsqueezy_store_id": "199395",
+  "lemonsqueezy_webhook_secret": "a93effd09a...",
+  "flowise_base_url": "https://flowise.com/api/v1/prediction",
+  "flowise_api_key": "your-api-key",
+  "app_name": "my-app"
+}</pre>
+                                                    <p><strong>Risposta:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">{
+  "status": "success",
+  "message": "Setup completato!",
+  "admin_key": "generated-admin-key",
+  "encryption_key": "generated-encryption-key",
+  "env_commands": [
+    "SUPABASE_URL=\"https://xxx.supabase.co\"",
+    "CORE_ADMIN_KEY=\"generated-admin-key\""
+  ]
+}</pre>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Generate Token -->
+                                        <div class="collapse collapse-arrow bg-base-200">
+                                            <input type="checkbox" />
+                                            <div class="collapse-title font-medium">
+                                                <span class="badge badge-info badge-sm mr-2">POST</span>
+                                                /core/v1/admin/generate-token
+                                            </div>
+                                            <div class="collapse-content">
+                                                <div class="space-y-2">
+                                                    <p><strong>Descrizione:</strong> Genera access token Supabase per utente esistente</p>
+                                                    <p><strong>Body:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">{
+  "email": "user@example.com",
+  "password": "userpassword"
+}</pre>
+                                                    <p><strong>Risposta:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">{
+  "access_token": "eyJhbGciOi..."
+}</pre>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Development Guide Tab -->
+                    <div id="tab-development-guide" class="tab-content">
+                        <div class="space-y-6">
+                            
+                            <!-- Quick Start -->
+                            <div class="card bg-base-100 shadow-xl">
+                                <div class="card-body">
+                                    <h2 class="card-title text-primary">
+                                        <i class="fas fa-rocket"></i>
+                                        Quick Start (5 minuti)
+                                    </h2>
+                                    
+                                    <div class="steps">
+                                        <div class="step step-primary">
+                                            <div class="step-content">
+                                                <h3 class="font-bold">1. Setup Supabase</h3>
+                                                <ul class="list-disc list-inside text-sm space-y-1">
+                                                    <li>Crea progetto su supabase.com</li>
+                                                    <li>Esegui SQL schema: <code>sql/000_full_schema.sql</code></li>
+                                                    <li>Copia URL progetto e Service Key</li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="step step-primary">
+                                            <div class="step-content">
+                                                <h3 class="font-bold">2. Configurazione</h3>
+                                                <pre class="bg-base-300 p-2 rounded text-sm"># Copia template
+cp .env.example .env
+
+# Configura variabili principali
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_KEY=your-service-key
+OPENROUTER_PROVISIONING_KEY=your-openrouter-key</pre>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="step step-primary">
+                                            <div class="step-content">
+                                                <h3 class="font-bold">3. Avvio</h3>
+                                                <pre class="bg-base-300 p-2 rounded text-sm"># Installa dipendenze
+pip install -r requirements.txt
+
+# Avvia server
+python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 5050</pre>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="step step-primary">
+                                            <div class="step-content">
+                                                <h3 class="font-bold">4. Test</h3>
+                                                <pre class="bg-base-300 p-2 rounded text-sm"># Health check
+curl http://127.0.0.1:5050/health
+
+# Dashboard admin
+open http://127.0.0.1:5050/core/v1/admin-ui/dashboard</pre>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Sviluppo Applicazioni -->
+                            <div class="card bg-base-100 shadow-xl">
+                                <div class="card-body">
+                                    <h2 class="card-title text-secondary">
+                                        <i class="fas fa-code"></i>
+                                        Sviluppo Applicazioni su Flow Starter
+                                    </h2>
+                                    
+                                    <div class="space-y-4">
+                                        <div class="alert alert-info">
+                                            <i class="fas fa-magic"></i>
+                                            <div>
+                                                <h3 class="font-bold">Filosofia: Plug & Play AI</h3>
+                                                <p>Flow Starter è il <strong>"Stripe per l'AI"</strong>. La tua app fa una chiamata, riceve il risultato AI. Flow Starter gestisce tutto il resto: crediti, pricing, provider, sicurezza, addebiti.</p>
+                                                <p class="mt-2 font-mono text-sm">app.call(flow_key, data) → ai_result ✨</p>
+                                            </div>
+                                        </div>
+
+                                        <!-- Architettura Multi-Tenant -->
+                                        <div class="collapse collapse-arrow bg-base-200">
+                                            <input type="checkbox" />
+                                            <div class="collapse-title font-medium">
+                                                <i class="fas fa-building"></i>
+                                                Architettura Multi-Tenant
+                                            </div>
+                                            <div class="collapse-content">
+                                                <div class="space-y-3">
+                                                    <p><strong>Concetti chiave:</strong></p>
+                                                    <ul class="list-disc list-inside space-y-1">
+                                                        <li><strong>App ID:</strong> Identificato automaticamente da Flow Starter (via dominio o config)</li>
+                                                        <li><strong>Flow Key:</strong> Nome semplice del workflow (es. "content_generator")</li>
+                                                        <li><strong>Flow ID:</strong> ID tecnico Flowise (gestito da Flow Starter)</li>
+                                                        <li><strong>Node Names:</strong> Configurazione automatica OpenRouter</li>
+                                                    </ul>
+                                                    
+                                                    <div class="alert alert-warning mt-3">
+                                                        <i class="fas fa-cog"></i>
+                                                        <div>
+                                                            <h4 class="font-bold text-sm">Modalità Deployment</h4>
+                                                            <p class="text-xs">Flow Starter supporta due modalità:</p>
+                                                            <ul class="list-disc list-inside text-xs mt-1">
+                                                                <li><strong>Single-tenant:</strong> <code>CORE_APP_ID=my-app</code> nell'ambiente (più semplice)</li>
+                                                                <li><strong>Multi-tenant:</strong> Header <code>X-App-Id</code> per ogni chiamata</li>
+                                                            </ul>
+                                                            <p class="text-xs mt-2 font-semibold">💡 Consiglio: Inizia single-tenant, migra a multi-tenant se necessario</p>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <p><strong>Configurazione flow:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm"># Configura mapping flow_key → flow_id
+POST /core/v1/admin/flow-configs
+{
+  "app_id": "my-saas-app",
+  "flow_key": "content_generator", 
+  "flow_id": "abc-123-def-456",
+  "node_names": ["chatOpenRouter_0"]
+}</pre>
+                                                    
+                                                    <p><strong>Utilizzo nel client (semplicissimo):</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm"># L'app fa solo questo - Flow Starter gestisce tutto!
+POST /core/v1/providers/flowise/execute
+Headers: Authorization: Bearer &lt;user_token&gt;
+{
+  "flow_key": "content_generator",
+  "data": {"prompt": "Genera post LinkedIn"}
+}</pre>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Sistema Crediti -->
+                                        <div class="collapse collapse-arrow bg-base-200">
+                                            <input type="checkbox" />
+                                            <div class="collapse-title font-medium">
+                                                <i class="fas fa-coins"></i>
+                                                Sistema Crediti e Pricing
+                                            </div>
+                                            <div class="collapse-content">
+                                                <div class="space-y-3">
+                                                    <p><strong>Logica di pricing:</strong></p>
+                                                    <ol class="list-decimal list-inside space-y-1">
+                                                        <li><strong>Pre-check affordability:</strong> Verifica crediti prima dell'esecuzione</li>
+                                                        <li><strong>Esecuzione:</strong> Chiama provider AI (OpenRouter/Flowise)</li>
+                                                        <li><strong>Misurazione costo reale:</strong> Delta usage OpenRouter</li>
+                                                        <li><strong>Addebito finale:</strong> Crediti = costo_usd × moltiplicatori</li>
+                                                    </ol>
+                                                    
+                                                    <p><strong>Moltiplicatori automatici:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm"># Calcolo automatico basato su business config
+overhead_multiplier = 1 + (costi_fissi_mensili / revenue_target)
+final_multiplier = overhead_multiplier × margin_target × usd_to_credits
+
+# Esempio: 
+# Costi fissi: $3000/mese, Revenue target: $10000/mese
+# overhead_multiplier = 1 + (3000/10000) = 1.3
+# final_multiplier = 1.3 × 2.5 × 100 = 325 crediti per $1 di costo AI</pre>
+                                                    
+                                                    <p><strong>Controllo affordability per-app:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm"># Configura soglia minima per app
+PUT /core/v1/admin/pricing/config
+{
+  "flow_costs_usd": {
+    "my-saas-app": 1.0  // Soglia minima: 1.0 crediti
+  }
+}</pre>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Integrazione Frontend -->
+                                        <div class="collapse collapse-arrow bg-base-200">
+                                            <input type="checkbox" />
+                                            <div class="collapse-title font-medium">
+                                                <i class="fas fa-desktop"></i>
+                                                Integrazione Frontend
+                                            </div>
+                                            <div class="collapse-content">
+                                                <div class="space-y-3">
+                                                    <p><strong>Integrazione JavaScript Ultra-Semplice:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">// config.js
+const FLOW_STARTER = {
+  API: 'https://your-core.com/core/v1'
+};
+
+// La UNICA funzione che ti serve
+async function runAI(userToken, flowKey, data, appId = null) {
+  const headers = {
+    'Authorization': \`Bearer \${userToken}\`,
+    'Content-Type': 'application/json'
+  };
+  
+  // Solo per multi-tenant
+  if (appId) headers['X-App-Id'] = appId;
+  
+  const response = await fetch(\`\${FLOW_STARTER.API}/providers/flowise/execute\`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ flow_key: flowKey, data })
+  });
+
+  if (response.status === 402) {
+    // Unico errore da gestire: crediti insufficienti
+    throw new Error('CREDITS_NEEDED');
+  }
+
+  const result = await response.json();
+  return result.result; // Solo il contenuto AI
+}</pre>
+                                                    
+                                                    <p><strong>Esempio pratico:</strong></p>
+                                                    <pre class="bg-base-300 p-2 rounded text-sm">// La tua app
+async function generateContent(userToken, prompt) {
+  try {
+    const aiResult = await runAI(userToken, 'content_generator', {
+      prompt: prompt
+    });
+    
+    // Usa il risultato nell'UI
+    return aiResult.text;
+    
+  } catch (error) {
+    if (error.message === 'CREDITS_NEEDED') {
+      // Redirect a pricing
+      window.location.href = '/pricing';
+    } else {
+      console.error('AI Error:', error);
+    }
+  }
+}
+
+// Uso in React/Vue/Angular
+
+// Single-tenant (più comune)
+const content = await runAI(token, 'content_generator', {
+  prompt: 'Scrivi post su AI'
+});
+
+// Multi-tenant (se necessario)
+const content = await runAI(token, 'content_generator', {
+  prompt: 'Scrivi post su AI'
+}, 'my-app-id');
+
+setContent(content.text); // Fatto! 🎉</pre>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Best Practices -->
+                                        <div class="collapse collapse-arrow bg-base-200">
+                                            <input type="checkbox" />
+                                            <div class="collapse-title font-medium">
+                                                <i class="fas fa-star"></i>
+                                                Best Practices
+                                            </div>
+                                            <div class="collapse-content">
+                                                <div class="space-y-3">
+                                                    <div class="alert alert-success">
+                                                        <i class="fas fa-thumbs-up"></i>
+                                                        <div>
+                                                            <h4 class="font-bold">Do's ✅</h4>
+                                                            <ul class="list-disc list-inside space-y-1">
+                                                                <li><strong>Usa flow_key:</strong> Più semplice di flow_id</li>
+                                                                <li><strong>Gestisci solo 402:</strong> Crediti insufficienti → redirect pricing</li>
+                                                                <li><strong>Mostra loading state:</strong> AI può richiedere 30-60 secondi</li>
+                                                                <li><strong>Salva user token:</strong> Per chiamate successive</li>
+                                                            </ul>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <div class="alert alert-error">
+                                                        <i class="fas fa-times-circle"></i>
+                                                        <div>
+                                                            <h4 class="font-bold">Don'ts ❌</h4>
+                                                            <ul class="list-disc list-inside space-y-1">
+                                                                <li><strong>Non fare affordability check:</strong> Flow Starter lo fa già</li>
+                                                                <li><strong>Non gestire pricing:</strong> È automatico</li>
+                                                                <li><strong>Non implementare retry:</strong> Flow Starter ha timeout intelligenti</li>
+                                                                <li><strong>Non esporre API keys:</strong> Tutto server-side</li>
+                                                            </ul>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Workflow Sviluppo -->
+                            <div class="card bg-base-100 shadow-xl">
+                                <div class="card-body">
+                                    <h2 class="card-title text-accent">
+                                        <i class="fas fa-tasks"></i>
+                                        Workflow di Sviluppo
+                                    </h2>
+                                    
+                                    <div class="timeline">
+                                        <div class="timeline-item">
+                                            <div class="timeline-marker bg-primary text-primary-content">1</div>
+                                            <div class="timeline-content">
+                                                <h3 class="font-bold">Setup Iniziale</h3>
+                                                <p>Configura Supabase, LemonSqueezy e Flowise tramite Setup Wizard</p>
+                                                <div class="mt-2">
+                                                    <a href="/core/v1/setup/wizard" class="btn btn-sm btn-primary" target="_blank">
+                                                        <i class="fas fa-external-link-alt"></i> Setup Wizard
+                                                    </a>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="timeline-item">
+                                            <div class="timeline-marker bg-secondary text-secondary-content">2</div>
+                                            <div class="timeline-content">
+                                                <h3 class="font-bold">Configurazione Business</h3>
+                                                <p>Imposta pricing, margini e costi tramite Business Dashboard</p>
+                                                <div class="mt-2">
+                                                    <button class="btn btn-sm btn-secondary" onclick="navigate('business-config')">
+                                                        <i class="fas fa-chart-line"></i> Business Config
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="timeline-item">
+                                            <div class="timeline-marker bg-accent text-accent-content">3</div>
+                                            <div class="timeline-content">
+                                                <h3 class="font-bold">Creazione Flow</h3>
+                                                <p>Crea workflow in Flowise e configura mapping flow_key → flow_id</p>
+                                                <div class="mt-2">
+                                                    <button class="btn btn-sm btn-accent" onclick="navigate('config-flows')">
+                                                        <i class="fas fa-project-diagram"></i> Flow Mappings
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="timeline-item">
+                                            <div class="timeline-marker bg-success text-success-content">4</div>
+                                            <div class="timeline-content">
+                                                <h3 class="font-bold">Test & Deploy</h3>
+                                                <p>Testa i flow, verifica pricing e deploy in produzione</p>
+                                                <div class="mt-2">
+                                                    <button class="btn btn-sm btn-success" onclick="navigate('testing')">
+                                                        <i class="fas fa-flask"></i> Testing Suite
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Architecture Tab -->
+                    <div id="tab-architecture" class="tab-content">
+                        <div class="space-y-6">
+                            
+                            <!-- System Overview -->
+                            <div class="card bg-base-100 shadow-xl">
+                                <div class="card-body">
+                                    <h2 class="card-title text-primary">
+                                        <i class="fas fa-sitemap"></i>
+                                        Architettura del Sistema
+                                    </h2>
+                                    
+                                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                        <!-- Components -->
+                                        <div>
+                                            <h3 class="font-bold mb-3">Componenti Principali</h3>
+                                            <div class="space-y-2">
+                                                <div class="badge badge-primary badge-lg w-full justify-start">
+                                                    <i class="fas fa-server mr-2"></i>
+                                                    FastAPI Core
+                                                </div>
+                                                <div class="badge badge-secondary badge-lg w-full justify-start">
+                                                    <i class="fas fa-database mr-2"></i>
+                                                    Supabase (PostgreSQL + Auth)
+                                                </div>
+                                                <div class="badge badge-accent badge-lg w-full justify-start">
+                                                    <i class="fas fa-robot mr-2"></i>
+                                                    OpenRouter (AI Models)
+                                                </div>
+                                                <div class="badge badge-info badge-lg w-full justify-start">
+                                                    <i class="fas fa-project-diagram mr-2"></i>
+                                                    Flowise (AI Workflows)
+                                                </div>
+                                                <div class="badge badge-warning badge-lg w-full justify-start">
+                                                    <i class="fas fa-credit-card mr-2"></i>
+                                                    LemonSqueezy (Payments)
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Data Flow -->
+                                        <div>
+                                            <h3 class="font-bold mb-3">Flusso Dati</h3>
+                                            <div class="space-y-3">
+                                                <div class="alert alert-info">
+                                                    <div class="text-sm">
+                                                        <p><strong>1. Autenticazione:</strong> JWT Supabase verificato via JWKS</p>
+                                                        <p><strong>2. Affordability:</strong> Pre-check crediti vs soglia app</p>
+                                                        <p><strong>3. Provisioning:</strong> Chiavi OpenRouter iniettate nei nodi</p>
+                                                        <p><strong>4. Esecuzione:</strong> Workflow Flowise con timeout intelligenti</p>
+                                                        <p><strong>5. Misurazione:</strong> Delta usage OpenRouter</p>
+                                                        <p><strong>6. Addebito:</strong> Crediti reali via RPC atomiche</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Database Schema -->
+                            <div class="card bg-base-100 shadow-xl">
+                                <div class="card-body">
+                                    <h2 class="card-title text-secondary">
+                                        <i class="fas fa-database"></i>
+                                        Schema Database
+                                    </h2>
+                                    
+                                    <div class="overflow-x-auto">
+                                        <table class="table table-zebra">
+                                            <thead>
+                                                <tr>
+                                                    <th>Tabella</th>
+                                                    <th>Descrizione</th>
+                                                    <th>Campi Principali</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr>
+                                                    <td><code>profiles</code></td>
+                                                    <td>Utenti e saldo crediti</td>
+                                                    <td>id, email, credits, openrouter_key_name</td>
+                                                </tr>
+                                                <tr>
+                                                    <td><code>credit_transactions</code></td>
+                                                    <td>Ledger transazioni crediti</td>
+                                                    <td>user_id, amount, reason, created_at</td>
+                                                </tr>
+                                                <tr>
+                                                    <td><code>flow_configs</code></td>
+                                                    <td>Mapping flow multi-tenant</td>
+                                                    <td>app_id, flow_key, flow_id, node_names</td>
+                                                </tr>
+                                                <tr>
+                                                    <td><code>pricing_configs</code></td>
+                                                    <td>Configurazioni pricing per-app</td>
+                                                    <td>app_id, config (JSONB)</td>
+                                                </tr>
+                                                <tr>
+                                                    <td><code>billing_configs</code></td>
+                                                    <td>Configurazioni billing per-app</td>
+                                                    <td>app_id, config (JSONB)</td>
+                                                </tr>
+                                                <tr>
+                                                    <td><code>provider_credentials</code></td>
+                                                    <td>Credenziali criptate provider</td>
+                                                    <td>app_id, provider, credential_key, encrypted_value</td>
+                                                </tr>
+                                                <tr>
+                                                    <td><code>billing_transactions</code></td>
+                                                    <td>Audit transazioni pagamento</td>
+                                                    <td>user_id, provider, amount_cents, status</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Security Model -->
+                            <div class="card bg-base-100 shadow-xl">
+                                <div class="card-body">
+                                    <h2 class="card-title text-error">
+                                        <i class="fas fa-shield-alt"></i>
+                                        Modello di Sicurezza
+                                    </h2>
+                                    
+                                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                        <div class="space-y-3">
+                                            <h3 class="font-bold">Row Level Security (RLS)</h3>
+                                            <ul class="list-disc list-inside space-y-1 text-sm">
+                                                <li><strong>profiles:</strong> Utenti vedono solo i propri dati</li>
+                                                <li><strong>credit_transactions:</strong> Ledger per-utente isolato</li>
+                                                <li><strong>flow_configs:</strong> Solo service_role (deny_all)</li>
+                                                <li><strong>pricing_configs:</strong> Solo service_role (deny_all)</li>
+                                                <li><strong>provider_credentials:</strong> Solo service_role (deny_all)</li>
+                                            </ul>
+                                        </div>
+                                        
+                                        <div class="space-y-3">
+                                            <h3 class="font-bold">Crittografia</h3>
+                                            <ul class="list-disc list-inside space-y-1 text-sm">
+                                                <li><strong>Credenziali provider:</strong> Fernet encryption</li>
+                                                <li><strong>Chiavi OpenRouter:</strong> Mai esposte al client</li>
+                                                <li><strong>Webhook signatures:</strong> HMAC verification</li>
+                                                <li><strong>JWT tokens:</strong> Verificati via JWKS</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Examples Tab -->
+                    <div id="tab-examples" class="tab-content">
+                        <div class="space-y-6">
+                            
+                            <!-- Complete Integration Example -->
+                            <div class="card bg-base-100 shadow-xl">
+                                <div class="card-body">
+                                    <h2 class="card-title text-primary">
+                                        <i class="fas fa-code"></i>
+                                        Esempio Integrazione Completa
+                                    </h2>
+                                    
+                                    <div class="tabs tabs-bordered">
+                                        <a class="tab tab-active" onclick="showExampleTab('react')">React/Next.js</a>
+                                        <a class="tab" onclick="showExampleTab('python')">Python</a>
+                                        <a class="tab" onclick="showExampleTab('curl')">cURL</a>
+                                    </div>
+                                    
+                                    <div id="example-react" class="mt-4">
+                                        <h3 class="font-bold mb-2">React Hook Super Semplice</h3>
+                                        <pre class="bg-base-300 p-4 rounded text-sm overflow-x-auto">// hooks/useFlowStarter.js
+import { useState } from 'react';
+
+const API_URL = process.env.NEXT_PUBLIC_FLOW_STARTER_API + '/core/v1';
+
+export function useFlowStarter(userToken) {
+  const [loading, setLoading] = useState(false);
+
+  const headers = {
+    'Authorization': \`Bearer \${userToken}\`,
+    'Content-Type': 'application/json'
+  };
+
+  const runAI = async (flowKey, inputData) => {
+    setLoading(true);
+    try {
+      const response = await fetch(\`\${API_URL}/providers/flowise/execute\`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          flow_key: flowKey,
+          data: inputData
+        })
+      });
+
+      if (response.status === 402) {
+        // Flow Starter ha controllato - crediti insufficienti
+        const error = await response.json();
+        throw new Error(\`Serve ricaricare: \${error.shortage} crediti mancanti\`);
+      }
+
+      const result = await response.json();
+      return result.result; // Solo il contenuto AI
+      
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return { runAI, loading };
+}
+
+// Componente esempio
+function ContentGenerator({ userToken }) {
+  const { runAI, loading } = useFlowStarter(userToken);
+  const [content, setContent] = useState('');
+
+  const generateContent = async () => {
+    try {
+      const result = await runAI('content_generator', {
+        prompt: 'Scrivi un post LinkedIn su AI'
+      });
+      setContent(result.text);
+    } catch (error) {
+      if (error.message.includes('crediti')) {
+        // Redirect a pricing page
+        window.location.href = '/pricing';
+      } else {
+        alert('Errore: ' + error.message);
+      }
+    }
+  };
+
+  return (
+    &lt;div&gt;
+      &lt;button onClick={generateContent} disabled={loading}&gt;
+        {loading ? 'Generando...' : 'Genera Contenuto AI'}
+      &lt;/button&gt;
+      {content && &lt;div&gt;{content}&lt;/div&gt;}
+    &lt;/div&gt;
+  );
+}</pre>
+                                        
+                                        <div class="alert alert-info mt-4">
+                                            <i class="fas fa-magic"></i>
+                                            <div>
+                                                <h4 class="font-bold">La magia di Flow Starter</h4>
+                                                <p class="text-sm">La tua app fa solo <code>runAI(flowKey, data)</code> e riceve il risultato. Flow Starter gestisce automaticamente: autenticazione, crediti, pricing, provider AI, retry, timeout, addebiti.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div id="example-python" class="mt-4 hidden">
+                                        <h3 class="font-bold mb-2">Client Python Semplice</h3>
+                                        <pre class="bg-base-300 p-4 rounded text-sm overflow-x-auto"># flow_starter_client.py
+import httpx
+import asyncio
+
+class FlowStarterClient:
+    def __init__(self, api_url: str, user_token: str):
+        self.api_url = api_url.rstrip('/') + '/core/v1'
+        self.headers = {
+            'Authorization': f'Bearer {user_token}',
+            'Content-Type': 'application/json'
+        }
+    
+    async def get_credits(self) -> float:
+        """Ottiene il saldo crediti dell'utente."""
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f'{self.api_url}/credits/balance', headers=self.headers)
+            response.raise_for_status()
+            return response.json()['credits']
+    
+    async def run_ai_flow(self, flow_key: str, input_data: dict) -> dict:
+        """Esegue un workflow AI. Flow Starter gestisce tutto automaticamente."""
+        async with httpx.AsyncClient(timeout=300) as client:
+            response = await client.post(
+                f'{self.api_url}/providers/flowise/execute',
+                headers=self.headers,
+                json={'flow_key': flow_key, 'data': input_data}
+            )
+            
+            if response.status_code == 402:
+                # Crediti insufficienti - Flow Starter ha già controllato tutto
+                error = response.json()
+                raise ValueError(f"Crediti insufficienti: {error.get('shortage', 0)} mancanti")
+            
+            response.raise_for_status()
+            return response.json()
+
+# Esempio d'uso - È COSÌ SEMPLICE!
+async def main():
+    # Setup client
+    client = FlowStarterClient(
+        api_url='https://your-core.com',
+        user_token='your-supabase-token'
+    )
+    
+    # Controlla saldo (opzionale)
+    credits = await client.get_credits()
+    print(f'💰 Crediti disponibili: {credits}')
+    
+    # Esegui AI workflow - Flow Starter fa tutto il resto!
+    try:
+        result = await client.run_ai_flow(
+            flow_key='content_generator',
+            input_data={'prompt': 'Scrivi un post LinkedIn su AI marketing'}
+        )
+        
+        # Usa il risultato nella tua app
+        ai_content = result['result']['text']
+        print(f'🤖 Contenuto generato: {ai_content}')
+        
+    except ValueError as e:
+        # Gestisci solo crediti insufficienti
+        print(f'❌ {e}')
+        # Redirect utente a pagina pricing
+    except Exception as e:
+        # Altri errori
+        print(f'❌ Errore: {e}')
+
+if __name__ == '__main__':
+    asyncio.run(main())</pre>
+                                        
+                                        <div class="alert alert-success mt-4">
+                                            <i class="fas fa-lightbulb"></i>
+                                            <div>
+                                                <h4 class="font-bold">Perché è così semplice?</h4>
+                                                <ul class="list-disc list-inside text-sm">
+                                                    <li><strong>Flow Starter gestisce tutto:</strong> affordability, pricing, addebiti, retry</li>
+                                                    <li><strong>L'app si concentra sul business:</strong> input → AI result → UI</li>
+                                                    <li><strong>Errori gestiti automaticamente:</strong> solo 402 (crediti) da gestire</li>
+                                                    <li><strong>Plug-and-play:</strong> 3 righe di codice per AI complessa</li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div id="example-curl" class="mt-4 hidden">
+                                        <h3 class="font-bold mb-2">cURL Super Essenziali</h3>
+                                        <pre class="bg-base-300 p-4 rounded text-sm overflow-x-auto"># Setup variabili
+export API_URL="https://your-core.com/core/v1"
+export USER_TOKEN="your-supabase-token"
+
+# 🚀 LA CHIAMATA CHE CONTA - Esegui AI workflow
+
+# Single-tenant (CORE_APP_ID nell'ambiente)
+curl -X POST \\
+  -H "Authorization: Bearer \$USER_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "flow_key": "content_generator",
+    "data": {"prompt": "Scrivi post LinkedIn su AI"}
+  }' \\
+  \$API_URL/providers/flowise/execute
+
+# Multi-tenant (aggiungi X-App-Id)
+curl -X POST \\
+  -H "Authorization: Bearer \$USER_TOKEN" \\
+  -H "X-App-Id: my-app" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "flow_key": "content_generator", 
+    "data": {"prompt": "Scrivi post LinkedIn su AI"}
+  }' \\
+  \$API_URL/providers/flowise/execute
+
+# 💰 Controlla saldo crediti (opzionale)
+curl -H "Authorization: Bearer \$USER_TOKEN" \\
+     \$API_URL/credits/balance
+
+# 🛒 Crea checkout per ricaricare crediti
+curl -X POST \\
+  -H "Authorization: Bearer \$USER_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"credits": 5000, "amount_usd": 19.0}' \\
+  \$API_URL/billing/checkout
+
+# ⚡ Test rapido con utente automatico
+curl -X POST \$API_URL/examples/e2e-run
+# → Risposta contiene access_token pronto per i test</pre>
+                                        
+                                        <div class="alert alert-success mt-4">
+                                            <i class="fas fa-rocket"></i>
+                                            <div>
+                                                <h4 class="font-bold">Basta una chiamata!</h4>
+                                                <p class="text-sm">Con Flow Starter, la tua app fa una sola chiamata per eseguire AI complessi. Tutto il resto (pricing, crediti, provider, app identification) è gestito automaticamente.</p>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="alert alert-info mt-4">
+                                            <i class="fas fa-cog"></i>
+                                            <div>
+                                                <h4 class="font-bold">Due Modi di Usare Flow Starter</h4>
+                                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+                                                    <div class="bg-success/10 p-2 rounded">
+                                                        <h5 class="font-bold text-xs text-success">✅ SINGLE-TENANT (Consigliato)</h5>
+                                                        <p class="text-xs">Un'istanza Flow Starter per la tua app</p>
+                                                        <code class="text-xs">CORE_APP_ID=my-app</code>
+                                                        <p class="text-xs mt-1">→ No X-App-Id necessario</p>
+                                                    </div>
+                                                    <div class="bg-warning/10 p-2 rounded">
+                                                        <h5 class="font-bold text-xs text-warning">⚠️ MULTI-TENANT (Avanzato)</h5>
+                                                        <p class="text-xs">Un Flow Starter per più app</p>
+                                                        <code class="text-xs">X-App-Id: my-app</code>
+                                                        <p class="text-xs mt-1">→ Header richiesto</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="collapse collapse-arrow bg-base-200 mt-4">
+                                            <input type="checkbox" />
+                                            <div class="collapse-title font-medium text-sm">
+                                                <i class="fas fa-tools"></i>
+                                                Comandi Admin (Setup/Config)
+                                            </div>
+                                            <div class="collapse-content">
+                                                <pre class="bg-base-300 p-3 rounded text-xs">export ADMIN_KEY="your-admin-key"
+
+# Configura flow mapping (una volta)
+curl -X POST -H "X-Admin-Key: \$ADMIN_KEY" \\
+     -H "Content-Type: application/json" \\
+     -d '{
+       "app_id": "my-app",
+       "flow_key": "content_generator",
+       "flow_id": "your-flowise-flow-id",
+       "node_names": ["chatOpenRouter_0"]
+     }' \\
+     \$API_URL/admin/flow-configs
+
+# Crea utente test
+curl -X POST -H "X-Admin-Key: \$ADMIN_KEY" \\
+     -H "Content-Type: application/json" \\
+     -d '{"email": "test@example.com"}' \\
+     \$API_URL/admin/users</pre>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Error Handling -->
+                            <div class="card bg-base-100 shadow-xl">
+                                <div class="card-body">
+                                    <h2 class="card-title text-error">
+                                        <i class="fas fa-exclamation-triangle"></i>
+                                        Gestione Errori
+                                    </h2>
+                                    
+                                    <div class="overflow-x-auto">
+                                        <table class="table table-zebra">
+                                            <thead>
+                                                <tr>
+                                                    <th>Status Code</th>
+                                                    <th>Scenario</th>
+                                                    <th>Risposta</th>
+                                                    <th>Azione Consigliata</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr>
+                                                    <td><span class="badge badge-error">401</span></td>
+                                                    <td>Token mancante/invalido</td>
+                                                    <td><code>{"detail": "Token mancante"}</code></td>
+                                                    <td>Rigenera token o verifica autenticazione</td>
+                                                </tr>
+                                                <tr>
+                                                    <td><span class="badge badge-warning">402</span></td>
+                                                    <td>Crediti insufficienti</td>
+                                                    <td><code>{"error_type": "insufficient_credits", "shortage": 0.5}</code></td>
+                                                    <td>Redirect a pagina acquisto crediti</td>
+                                                </tr>
+                                                <tr>
+                                                    <td><span class="badge badge-error">404</span></td>
+                                                    <td>Flow config non trovata</td>
+                                                    <td><code>{"detail": "flow_config non trovata"}</code></td>
+                                                    <td>Configura flow in Admin → Flow Mappings</td>
+                                                </tr>
+                                                <tr>
+                                                    <td><span class="badge badge-error">500</span></td>
+                                                    <td>Errore provider AI</td>
+                                                    <td><code>{"detail": "Errore durante l'esecuzione del flow"}</code></td>
+                                                    <td>Verifica configurazione provider e log</td>
+                                                </tr>
+                                                <tr>
+                                                    <td><span class="badge badge-error">502</span></td>
+                                                    <td>Timeout/errore OpenRouter</td>
+                                                    <td><code>{"detail": "Impossibile determinare il costo reale"}</code></td>
+                                                    <td>Retry con backoff, verifica status OpenRouter</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Testing Examples -->
+                            <div class="card bg-base-100 shadow-xl">
+                                <div class="card-body">
+                                    <h2 class="card-title text-success">
+                                        <i class="fas fa-flask"></i>
+                                        Esempi di Test
+                                    </h2>
+                                    
+                                    <div class="space-y-4">
+                                        <div class="collapse collapse-arrow bg-base-200">
+                                            <input type="checkbox" />
+                                            <div class="collapse-title font-medium">
+                                                Test E2E Completo
+                                            </div>
+                                            <div class="collapse-content">
+                                                <pre class="bg-base-300 p-3 rounded text-sm"># 1. Crea utente test automatico
+curl -X POST \$API_URL/examples/e2e-run
+
+# Risposta contiene access_token per i test successivi
+# 2. Usa il token per testare i flow
+export TEST_TOKEN="token_dalla_risposta_precedente"
+
+# 3. Test flow execution
+curl -X POST -H "Authorization: Bearer \$TEST_TOKEN" \\
+     -H "X-App-Id: default" \\
+     -H "Content-Type: application/json" \\
+     -d '{
+       "flow_key": "demo_generate_intro",
+       "data": {"prompt": "Test prompt"}
+     }' \\
+     \$API_URL/providers/flowise/execute</pre>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="collapse collapse-arrow bg-base-200">
+                                            <input type="checkbox" />
+                                            <div class="collapse-title font-medium">
+                                                Test Webhook Locale
+                                            </div>
+                                            <div class="collapse-content">
+                                                <pre class="bg-base-300 p-3 rounded text-sm"># Setup ngrok per webhook locali
+ngrok http 5050
+
+# Configura URL webhook in LemonSqueezy:
+# https://abc123.ngrok.io/core/v1/billing/webhook
+
+# Test simulazione webhook (ambiente dev)
+curl -X POST -H "X-Admin-Key: \$ADMIN_KEY" \\
+     -H "Content-Type: application/json" \\
+     -d '{
+       "user_id": "user-uuid",
+       "credits": 5000,
+       "amount_usd": 19.0,
+       "event_name": "order_created"
+     }' \\
+     \$API_URL/admin/billing/simulate-webhook</pre>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+
+            `
+        };

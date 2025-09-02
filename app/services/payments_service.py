@@ -52,19 +52,8 @@ class PaymentsService:
         return adapter
 
     async def get_plans(self) -> Dict[str, Any]:
-        # 1) Prova a leggere piani da Supabase (config persistente)
-        cfg = await self._billing_cfg_svc.get_config()
-        conf: Dict[str, Any] = cfg.get("config") or {}
-        plans = conf.get("plans")
-        if isinstance(plans, list):
-            return {"source": "config", "plans": plans}
-
-        # 2) Fallback al provider (non persistente)
         adapter = await self._get_adapter()
-        result = await adapter.get_plans()
-        if isinstance(result, dict) and "source" not in result:
-            result["source"] = "provider"
-        return result
+        return await adapter.get_plans()
 
     async def create_checkout(self, *, user_id: str, credits: int, amount_usd: Optional[float] = None, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         adapter = await self._get_adapter()

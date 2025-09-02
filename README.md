@@ -48,7 +48,18 @@ Vedi `.env.example`.
 - Pricing: `PRICING_DEFAULT_CREDITS_PER_CALL` (default: 1.0), `PRICING_MODEL_MAP_JSON`
 - OpenRouter: `OPENROUTER_BASE_URL`, `OPENROUTER_PROVISIONING_KEY`
 - Flowise: `FLOWISE_BASE_URL`, `FLOWISE_API_KEY`
-- Billing (LemonSqueezy): `LEMONSQUEEZY_API_KEY`, `LEMONSQUEEZY_SIGNING_SECRET`, `LEMONSQUEEZY_BYPASS_SIGNATURE` (solo dev), `BILLING_PROVIDER=lemonsqueezy`
+- Billing (LemonSqueezy): `LEMONSQUEEZY_API_KEY`, `LEMONSQUEEZY_SIGNING_SECRET`, `LEMONSQUEEZY_BYPASS_SIGNATURE` (solo dev), `LEMONSQUEEZY_STORE_ID`, `BILLING_PROVIDER=lemonsqueezy`
+- Core: `CORE_ADMIN_KEY`, `CORE_ENCRYPTION_KEY`, `CORE_APP_ID` (default: `default`)
+
+## Deploy su Railway (one‑click)
+
+1. Prepara un progetto Supabase e applica lo schema (`sql/000_full_schema.sql`).
+2. Premi “Deploy on Railway” su questo repo e compila le ENV richieste (vedi lista sopra).
+3. Aggiungi un servizio Flowise puntando al tuo fork GitHub oppure immagine ufficiale Docker.
+   - Fork: `pietrobonomo/Flowise` ([link repo](https://github.com/pietrobonomo/Flowise))
+   - Oppure immagine: `flowiseai/flowise:<version>`
+4. Imposta `FLOWISE_BASE_URL` nel servizio core usando l’URL interno/esterno del servizio Flowise.
+5. Verifica `/health` e accedi alla dashboard admin `/core/v1/admin-ui/dashboard`.
 - (Opzionale single-tenant) `NL_FLOW_*_ID`, `FLOWISE_NODE_MAP_JSON`
 
 ## Pricing & Affordability

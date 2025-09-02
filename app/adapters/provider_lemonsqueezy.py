@@ -26,7 +26,7 @@ class LemonSqueezyAdapter(BillingProvider):
         self.base_url = os.environ.get("LEMONSQUEEZY_BASE_URL", "https://api.lemonsqueezy.com/v1")
         self.credentials_manager = credentials_manager
         self.config = config or {}
-        # Priorità: credentials criptate > config > env vars
+        # Priorità: env vars > config > credentials criptate (caricate on-demand)
         ls_config = (config or {}).get("lemonsqueezy") or {}
         self.store_id = ls_config.get("store_id") or os.environ.get("LEMONSQUEEZY_STORE_ID", "")
         self.bypass_signature = os.environ.get("LEMONSQUEEZY_BYPASS_SIGNATURE", "false").lower() in ("1","true","yes")
@@ -36,38 +36,62 @@ class LemonSqueezyAdapter(BillingProvider):
         self._signing_secret_cache = None
 
     async def _get_api_key(self) -> str:
-        """Ottiene API key da credentials criptate o fallback env."""
+        """Ottiene API key con priorità: ENV > config > credentials criptate."""
         if self._api_key_cache:
             return self._api_key_cache
         
+        # 1) ENV
+        env_key = os.environ.get("LEMONSQUEEZY_API_KEY")
+        if env_key:
+            self._api_key_cache = env_key
+            return env_key
+
+        # 2) CONFIG
+        ls_config = self.config.get("lemonsqueezy") or {}
+        cfg_key = ls_config.get("api_key")
+        if cfg_key:
+            self._api_key_cache = cfg_key
+            return cfg_key
+
+        # 3) CREDENTIALS MANAGER (criptate)
         if self.credentials_manager:
             key = await self.credentials_manager.get_credential("lemonsqueezy", "api_key")
             if key:
                 self._api_key_cache = key
                 return key
-        
-        # Fallback a env o config
-        ls_config = self.config.get("lemonsqueezy") or {}
-        fallback = ls_config.get("api_key") or os.environ.get("LEMONSQUEEZY_API_KEY", "")
-        self._api_key_cache = fallback
-        return fallback
+
+        # 4) Ultimo fallback: stringa vuota
+        self._api_key_cache = ""
+        return ""
 
     async def _get_signing_secret(self) -> str:
-        """Ottiene webhook secret da credentials criptate o fallback env."""
+        """Ottiene webhook secret con priorità: ENV > config > credentials criptate."""
         if self._signing_secret_cache:
             return self._signing_secret_cache
         
+        # 1) ENV
+        env_secret = os.environ.get("LEMONSQUEEZY_SIGNING_SECRET")
+        if env_secret:
+            self._signing_secret_cache = env_secret
+            return env_secret
+
+        # 2) CONFIG
+        ls_config = self.config.get("lemonsqueezy") or {}
+        cfg_secret = ls_config.get("webhook_secret")
+        if cfg_secret:
+            self._signing_secret_cache = cfg_secret
+            return cfg_secret
+
+        # 3) CREDENTIALS MANAGER (criptate)
         if self.credentials_manager:
             secret = await self.credentials_manager.get_credential("lemonsqueezy", "webhook_secret")
             if secret:
                 self._signing_secret_cache = secret
                 return secret
-        
-        # Fallback a env o config
-        ls_config = self.config.get("lemonsqueezy") or {}
-        fallback = ls_config.get("webhook_secret") or os.environ.get("LEMONSQUEEZY_SIGNING_SECRET", "")
-        self._signing_secret_cache = fallback
-        return fallback
+
+        # 4) Ultimo fallback: stringa vuota
+        self._signing_secret_cache = ""
+        return ""
 
     async def create_checkout(self, user_id: str, credits: int, amount_usd: Optional[float] = None, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         # Crea un checkout reale con custom_price usando variant_id da config (se presente)

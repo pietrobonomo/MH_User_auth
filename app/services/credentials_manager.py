@@ -31,21 +31,26 @@ class CredentialsManager:
         self._cache: Dict[str, str] = {}
 
     def _get_or_generate_encryption_key(self) -> str:
-        """Ottiene o genera chiave di crittografia."""
-        # Priorità: env var > file locale > genera nuova
+        """Ottiene la chiave di crittografia da ENV.
+
+        Nota: niente fallback. Se la chiave manca o è invalida, solleviamo
+        un errore esplicito. Questo evita mismatch silenziosi che corrompono
+        le credenziali salvate.
+        """
         env_key = os.environ.get("CORE_ENCRYPTION_KEY")
-        if env_key:
-            try:
-                # Valida che sia una chiave Fernet
-                _ = Fernet(env_key.encode())
-                return env_key
-            except Exception:
-                # Se non valida, rigenera e logga
-                logger.warning("CORE_ENCRYPTION_KEY non valida; genero nuova chiave Fernet")
-        
-        # Genera nuova chiave se non presente
-        key = Fernet.generate_key()
-        return key.decode()
+        if not env_key:
+            raise RuntimeError(
+                "CORE_ENCRYPTION_KEY mancante. Configura il .env e riavvia il server."
+            )
+        try:
+            # Valida che sia una chiave Fernet valida
+            _ = Fernet(env_key.encode())
+            return env_key
+        except Exception as exc:
+            # Non generiamo nuove chiavi automaticamente: hard‑fail
+            raise RuntimeError(
+                "CORE_ENCRYPTION_KEY non valida. Sostituisci la chiave nel .env e riavvia."
+            ) from exc
 
     async def set_credential(self, provider: str, key: str, value: str) -> bool:
         """Salva credential criptata su Supabase."""
