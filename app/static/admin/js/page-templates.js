@@ -149,10 +149,10 @@ window.pageTemplates = {
                                 </tbody>
                             </table>
                             <div class="flex gap-2 mt-4">
-                                <button class="btn btn-sm btn-primary" onclick="addFixedCostRow()">
+                                <button class="btn btn-sm btn-primary" onclick="PricingComponent.addFixedCostRow()">
                                     <i class="fas fa-plus"></i> Add Fixed Cost
                                 </button>
-                                <button class="btn btn-sm btn-success" onclick="saveFixedCosts()">
+                                <button class="btn btn-sm btn-success" onclick="PricingComponent.saveFixedCosts()">
                                     <i class="fas fa-save"></i> Save Changes
                                 </button>
                             </div>

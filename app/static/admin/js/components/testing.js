@@ -302,7 +302,8 @@ const TestingComponent = {
             document.getElementById('test-balance-output').textContent = `ERROR: ${e.message}`;
         }
     },
-async executeFlow() {
+
+    async executeFlow() {
         const input = document.getElementById('test-input').value.trim();
         const appId = document.getElementById('test_app_id')?.value || 'default';
         const flowKey = document.getElementById('exec_flow_key')?.value;
