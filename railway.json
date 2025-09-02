@@ -8,10 +8,8 @@
       "build": {
         "builder": "NIXPACKS"
       },
-      "deploy": {
-        "startCommand": "python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT",
-        "healthcheckPath": "/health"
-      },
+      "startCommand": "python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT",
+      "healthcheckPath": "/health",
       "variables": {
         "CORE_APP_ID": "default",
         "CORE_CORS_ORIGIN": "https://${{RAILWAY_PUBLIC_DOMAIN}}",
