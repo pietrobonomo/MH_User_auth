@@ -25,6 +25,21 @@ python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 5050
 - POST `/core/v1/billing/checkout`
 - POST `/core/v1/billing/webhook` (da configurare come endpoint di webhook del provider)
 
+### Test checkout e webhook (locale vs live)
+
+- Locale (senza URL pubblico): non puoi ricevere webhook reali, quindi i crediti NON si ricaricano automaticamente dopo il pagamento. Usa la pagina Admin → Testing:
+  - "Generate Checkout" per aprire il link
+  - "Simulate webhook (dev)" per simulare l'accredito
+  - "Start polling" per osservare il saldo
+
+- Locale con ngrok (consigliato):
+  1. `ngrok http 5050`
+  2. Imposta l'URL pubblico `https://<id>.ngrok.io/core/v1/billing/webhook` nello store LemonSqueezy
+  3. Salva il Signing Secret nelle credenziali (Admin → Payment Provider → Test Connection deve risultare OK)
+  4. Genera checkout, completa il pagamento, verifica il saldo con "Start polling"
+
+- Live: configura direttamente l'URL pubblico del Core in produzione come webhook e testa un acquisto reale. I crediti saranno accreditati dal webhook e visibili nel ledger.
+
 ## Variabili d'ambiente
 
 Vedi `.env.example`.

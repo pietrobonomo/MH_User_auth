@@ -1,14 +1,20 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, status
+import logging
+from fastapi import APIRouter, HTTPException, status, Header
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional
 from app.services.credentials_manager import CredentialsManager
+from app.services.credits_supabase import SupabaseCreditsLedger
 from app.services.billing_config_service import BillingConfigService
 import secrets
+import asyncio
+import httpx
 import os
 from cryptography.fernet import Fernet
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -94,6 +100,131 @@ async def complete_setup(payload: SetupRequest) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"Errore setup: {str(e)}")
 
 
+
+class CreateUserRequest(BaseModel):
+    email: str = Field(..., description="Email nuovo utente")
+    password: Optional[str] = Field(default=None, description="Password (se non fornita, generata)")
+
+
+@router.post("/create-user")
+async def create_user(
+    payload: CreateUserRequest,
+    Authorization: Optional[str] = Header(default=None),
+    X_Admin_Key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
+) -> Dict[str, Any]:
+    """Crea un utente in Supabase e accredita i crediti iniziali di signup.
+
+    - Usa admin key (X-Admin-Key) per l'accesso dalla dashboard Testing.
+    - Crea l'utente via Supabase Auth Admin API con email confermata.
+    - Attende la creazione del profilo `profiles` (trigger Supabase) e accredita i crediti iniziali
+      letti da `pricing_configs.config.signup_initial_credits`.
+    """
+    core_admin_key = os.environ.get("CORE_ADMIN_KEY")
+    if not (X_Admin_Key and core_admin_key and X_Admin_Key == core_admin_key):
+        if not Authorization:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token o X-Admin-Key mancante")
+
+    supabase_url = os.environ.get("SUPABASE_URL")
+    service_key = os.environ.get("SUPABASE_SERVICE_KEY")
+    if not supabase_url or not service_key:
+        raise HTTPException(status_code=500, detail="Supabase non configurato")
+
+    email = payload.email.strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email mancante")
+    password = payload.password or ("Tmp" + secrets.token_urlsafe(12) + "1!")
+
+    headers_json = {
+        "apikey": service_key,
+        "Authorization": f"Bearer {service_key}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+
+    # Crea utente auth
+    async with httpx.AsyncClient(timeout=20) as client:
+        r = await client.post(
+            f"{supabase_url}/auth/v1/admin/users",
+            headers=headers_json,
+            json={"email": email, "password": password, "email_confirm": True},
+        )
+        if r.status_code not in (200, 201):
+            raise HTTPException(status_code=r.status_code, detail=r.text)
+        body = r.json() or {}
+        user_id = body.get("id") or (body.get("user") or {}).get("id")
+    if not user_id:
+        raise HTTPException(status_code=500, detail="Impossibile ottenere user_id da Supabase")
+
+    # Attendi riga profiles
+    async def _wait_profile_row(uid: str, attempts: int = 20) -> bool:
+        async with httpx.AsyncClient(timeout=10) as client:
+            for _ in range(attempts):
+                rr = await client.get(
+                    f"{supabase_url}/rest/v1/profiles?id=eq.{uid}&select=id,email,credits",
+                    headers=headers_json,
+                )
+                if rr.status_code == 200 and rr.headers.get("content-type", "").startswith("application/json"):
+                    arr = rr.json() or []
+                    if arr:
+                        return True
+                await asyncio.sleep(0.4)
+        return False
+
+    _ = await _wait_profile_row(user_id)
+
+    # Leggi signup_initial_credits
+    initial_credits = 0.0
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            pr = await client.get(
+                f"{supabase_url}/rest/v1/pricing_configs?app_id=eq.default&select=config",
+                headers=headers_json,
+            )
+            if pr.status_code == 200 and pr.headers.get("content-type", "").startswith("application/json"):
+                rows = pr.json() or []
+                cfg = (rows[0].get("config") if rows else {}) or {}
+                try:
+                    initial_credits = float(cfg.get("signup_initial_credits", 0.0) or 0.0)
+                except Exception:
+                    initial_credits = 0.0
+    except Exception:
+        initial_credits = 0.0
+
+    credits_after = None
+    if initial_credits and initial_credits > 0:
+        ledger = SupabaseCreditsLedger()
+        _ = await ledger.credit(user_id=user_id, amount=float(initial_credits), reason="signup_initial_credits")
+        try:
+            bal = await ledger.get_balance(user_id)
+            credits_after = float(bal)
+        except Exception:
+            credits_after = None
+
+    # Provisioning OpenRouter per l'utente
+    openrouter_key_name = None
+    openrouter_provisioned = False
+    openrouter_error = None
+    try:
+        from app.services.openrouter_provisioning import OpenRouterProvisioningService
+        prov_service = OpenRouterProvisioningService()
+        prov_result = await prov_service.create_user_key(user_id=user_id, user_email=email)
+        openrouter_key_name = prov_result.get("key_name")
+        openrouter_provisioned = True
+    except Exception as e:
+        openrouter_error = str(e)
+        logger.warning(f"OpenRouter provisioning failed for user {user_id}: {e}")
+
+    return {
+        "status": "success",
+        "user_id": user_id,
+        "email": email,
+        "password": password,  # Aggiungo la password per visibilità
+        "initial_credits": initial_credits,
+        **({"credits_after": credits_after} if credits_after is not None else {}),
+        "openrouter_provisioned": openrouter_provisioned,
+        **({"openrouter_key_name": openrouter_key_name} if openrouter_key_name else {}),
+        **({"openrouter_error": openrouter_error} if openrouter_error else {}),
+    }
 
 
 

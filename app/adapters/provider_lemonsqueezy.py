@@ -77,22 +77,15 @@ class LemonSqueezyAdapter(BillingProvider):
         store_id = (metadata or {}).get("store_id") or self.config.get("lemonsqueezy", {}).get("store_id")
         
         if not variant_id:
-            # Come fallback, ritorna payload da usare lato FE/operatore
-            custom_data = {"user_id": user_id, "credits": credits}
-            if amount_usd is not None:
-                custom_data["amount_usd"] = amount_usd
-            if metadata:
-                custom_data.update(metadata)
-            return {"provider": "lemonsqueezy", "mode": "pay_link", "custom_data": custom_data}
+            raise ValueError("variant_id mancante: mappa il plan_id→variant_id in lemonsqueezy.variant_map")
         
         if not store_id:
             logger.error("LemonSqueezy store_id mancante - controllare billing_configs")
-            return {"provider": "lemonsqueezy", "mode": "pay_link", "custom_data": {"error": "store_id mancante"}}
+            raise ValueError("store_id mancante in billing_configs.lemonsqueezy.store_id")
 
         price_usd = float(amount_usd or 0.0)
-        if price_usd <= 0 and credits > 0:
-            # fallback semplice: 1 USD = 100 crediti
-            price_usd = round(credits / 100.0, 2)
+        if price_usd <= 0:
+            raise ValueError("amount_usd mancante o non valido per il checkout")
 
         # Prepara safe_custom_data esattamente come InsightDesk
         safe_custom_data: Dict[str, Any] = {}
@@ -156,8 +149,7 @@ class LemonSqueezyAdapter(BillingProvider):
             
             if resp.status_code not in (200, 201):
                 logger.error(f"LemonSqueezy error response: {resp.text}")
-                # fallback al payload
-                return {"provider": "lemonsqueezy", "mode": "pay_link", "custom_data": body}
+                raise ValueError(f"Errore LemonSqueezy: HTTP {resp.status_code}")
                 
             data = resp.json()
             logger.info(f"LemonSqueezy response data: {json.dumps(data, indent=2)}")
@@ -167,7 +159,7 @@ class LemonSqueezyAdapter(BillingProvider):
             
             if not url:
                 logger.warning("LemonSqueezy non ha restituito checkout_url")
-                return {"provider": "lemonsqueezy", "mode": "pay_link", "custom_data": body}
+                raise ValueError("LemonSqueezy non ha restituito un checkout_url")
                 
             return {"provider": "lemonsqueezy", "checkout_url": url, "price_usd": price_usd}
 
@@ -236,15 +228,13 @@ class LemonSqueezyAdapter(BillingProvider):
         }
 
     def _variant_from_plan(self, plan_id: Optional[str]) -> Optional[str]:
-        # Mapping via env come fallback
+        # Mapping SOLO da config persistente (nessun fallback implicito)
         if not plan_id:
             return None
-        env_map = {
-            "starter_sub": os.environ.get("LEMONSQUEEZY_STARTER_VARIANT_ID"),
-            "professional_sub": os.environ.get("LEMONSQUEEZY_PROFESSIONAL_VARIANT_ID"),
-            "editor_sub": os.environ.get("LEMONSQUEEZY_EDITOR_VARIANT_ID"),
-            "pay_as_go": os.environ.get("LEMONSQUEEZY_PAYASYOUGO_VARIANT_ID"),
-        }
-        return env_map.get(str(plan_id))
+        variant_map = (self.config.get("lemonsqueezy") or {}).get("variant_map") or {}
+        if not isinstance(variant_map, dict):
+            return None
+        mapped = variant_map.get(str(plan_id))
+        return str(mapped) if mapped else None
 
 

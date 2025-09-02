@@ -116,6 +116,7 @@ class PricingConfigAPI(BaseModel):
     minimum_operation_cost_credits: float
     flow_costs_usd: Dict[str, float] = {}
     signup_initial_credits: float
+    bi_monthly_new_users: int = 0
     # Discounts & business
     plan_discounts_percent: Dict[str, float] = {}
     signup_initial_credits_cost_usd: float = 0.0
@@ -154,7 +155,11 @@ async def get_pricing_config(
             "minimum_operation_cost_credits": cfg.minimum_operation_cost_credits,
             "flow_costs_usd": cfg.flow_costs_usd,
             "signup_initial_credits": getattr(cfg, "signup_initial_credits", 0.0),
-            "minimum_affordability_credits": getattr(cfg, "minimum_affordability_credits", 0.0),
+            # BI & business
+            "signup_initial_credits_cost_usd": getattr(cfg, "signup_initial_credits_cost_usd", 0.0),
+            "bi_monthly_new_users": getattr(cfg, "bi_monthly_new_users", 0),
+            "plan_discounts_percent": getattr(cfg, "plan_discounts_percent", {}),
+            "unused_credits_recognized_as_revenue": getattr(cfg, "unused_credits_recognized_as_revenue", True),
         }
 
     # Filtra campi legacy di rollout per evitare confusione con billing_configs
@@ -172,6 +177,10 @@ async def get_pricing_config(
         "minimum_operation_cost_credits": float(cfg_json.get("minimum_operation_cost_credits", 0.0) or 0.01),
         "flow_costs_usd": cfg_json.get("flow_costs_usd", {}),
         "signup_initial_credits": float(cfg_json.get("signup_initial_credits", 0.0) or 0.0),
+        "signup_initial_credits_cost_usd": float(cfg_json.get("signup_initial_credits_cost_usd", 0.0) or 0.0),
+        "bi_monthly_new_users": int(cfg_json.get("bi_monthly_new_users", 0) or 0),
+        "plan_discounts_percent": cfg_json.get("plan_discounts_percent", {}),
+        "unused_credits_recognized_as_revenue": bool(cfg_json.get("unused_credits_recognized_as_revenue", True)),
     }
 
 @router.put("/pricing/config", response_model=PricingConfigAPI)
@@ -209,5 +218,8 @@ async def update_pricing_config(
         "minimum_operation_cost_credits": updated.minimum_operation_cost_credits,
         "flow_costs_usd": updated.flow_costs_usd,
         "signup_initial_credits": getattr(updated, "signup_initial_credits", 0.0),
-        # Campo legacy non più ritornato
+        "signup_initial_credits_cost_usd": getattr(updated, "signup_initial_credits_cost_usd", 0.0),
+        "bi_monthly_new_users": getattr(updated, "bi_monthly_new_users", 0),
+        "plan_discounts_percent": getattr(updated, "plan_discounts_percent", {}),
+        "unused_credits_recognized_as_revenue": getattr(updated, "unused_credits_recognized_as_revenue", True),
     }

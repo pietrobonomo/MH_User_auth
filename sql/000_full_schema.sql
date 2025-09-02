@@ -14,12 +14,44 @@ create table if not exists public.profiles (
   email text,
   credits numeric default 0,
   openrouter_api_key text,
+  -- Campi profilo avanzati (allineamento InsightDesk)
+  full_name text,
+  avatar_url text,
+  first_name text,
+  last_name text,
+  company text,
+  role text,
+  website text,
+  ui_language text default 'it',
+  timezone text default 'Europe/Rome',
+  subscription_status text default 'free',
+  -- OpenRouter fields avanzati (no chiave in chiaro in UI)
+  openrouter_key_hash text,
+  openrouter_key_name text,
+  openrouter_key_limit numeric,
+  openrouter_key_created_at timestamp with time zone,
+  openrouter_provisioning_status text,
   created_at timestamp with time zone default now(),
   updated_at timestamp with time zone default now()
 );
 
 -- Se la tabella esiste già senza la colonna, aggiungila (installazioni precedenti)
 alter table public.profiles add column if not exists openrouter_api_key text;
+alter table public.profiles add column if not exists full_name text;
+alter table public.profiles add column if not exists avatar_url text;
+alter table public.profiles add column if not exists first_name text;
+alter table public.profiles add column if not exists last_name text;
+alter table public.profiles add column if not exists company text;
+alter table public.profiles add column if not exists role text;
+alter table public.profiles add column if not exists website text;
+alter table public.profiles add column if not exists ui_language text;
+alter table public.profiles add column if not exists timezone text;
+alter table public.profiles add column if not exists subscription_status text;
+alter table public.profiles add column if not exists openrouter_key_hash text;
+alter table public.profiles add column if not exists openrouter_key_name text;
+alter table public.profiles add column if not exists openrouter_key_limit numeric;
+alter table public.profiles add column if not exists openrouter_key_created_at timestamp with time zone;
+alter table public.profiles add column if not exists openrouter_provisioning_status text;
 
 -- Tabella ledger transazioni crediti
 create table if not exists public.credit_transactions (

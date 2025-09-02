@@ -441,6 +441,24 @@ const BillingComponent = {
                 defValue.value = rule.value ?? '';
                 if (defMax) defMax.value = rule.max_carryover ?? '';
             }
+
+            // BI: mostra costo stimato (se presenti i campi nella pagina)
+            const costInput = document.getElementById('signup_credits_cost');
+            const newUsersInput = document.getElementById('bi_monthly_new_users');
+            const line = document.getElementById('signup_credits_forecast_line');
+            const out = document.getElementById('signup_credits_forecast_cost');
+            if (costInput && newUsersInput && line && out) {
+                const updateForecast = () => {
+                    const cost = parseFloat(costInput.value) || 0;
+                    const users = parseInt(newUsersInput.value) || 0;
+                    const total = cost * users;
+                    out.textContent = `$${total.toFixed(2)}`;
+                    line.style.display = 'block';
+                };
+                costInput.addEventListener('input', updateForecast);
+                newUsersInput.addEventListener('input', updateForecast);
+                updateForecast();
+            }
         } catch (error) {
             console.error('Load provider config error:', error);
             Utils.showToast('Failed to load provider configuration: ' + error.message, 'error');
@@ -458,23 +476,43 @@ const BillingComponent = {
                 const variant = tr.querySelector('input[data-field="variant_id"]').value.trim();
                 if (planId) variantMap[planId] = variant || '';
             });
-            
-            const config = {
-                provider: "lemonsqueezy",
-                config: {
-                    lemonsqueezy: {
-                        store_id: document.getElementById('ls_store').value.trim(),
-                        test_mode: document.getElementById('ls_test_mode').checked,
-                        variant_map: variantMap
-                    }
+
+            // 1) Carica configurazione esistente per evitare overwrite
+            const existing = await API.get('/core/v1/admin/billing/config');
+            const base = existing.config || {};
+
+            // 2) Applica provider e sotto-config a livello TOP-LEVEL (no nested config)
+            const updated = {
+                ...base,
+                provider: 'lemonsqueezy',
+                lemonsqueezy: {
+                    ...(base.lemonsqueezy || {}),
+                    store_id: document.getElementById('ls_store').value.trim(),
+                    test_mode: document.getElementById('ls_test_mode').checked,
+                    variant_map: variantMap
                 }
             };
-            
-            await API.put('/core/v1/admin/billing/config', config);
+
+            // 3) Salva
+            await API.put('/core/v1/admin/billing/config', updated);
             Utils.showToast('Provider configuration saved successfully!', 'success');
         } catch (error) {
             console.error('Save provider config error:', error);
             Utils.showToast('Failed to save provider configuration: ' + error.message, 'error');
+        }
+    },
+
+    /**
+     * Test connessione provider
+     */
+    async testProviderConnection() {
+        try {
+            const res = await API.post('/core/v1/admin/credentials/test?provider=lemonsqueezy');
+            const ok = !!res?.success;
+            const msg = ok ? (`Connection OK${res.user ? ' as ' + res.user : ''}`) : (`Test failed${res?.error ? ': ' + res.error : ''}`);
+            Utils.showToast(msg, ok ? 'success' : 'error');
+        } catch (error) {
+            Utils.showToast('Failed to test connection: ' + (error.message || 'Error'), 'error');
         }
     },
     
@@ -545,6 +583,20 @@ const BillingComponent = {
                 };
                 await API.put('/core/v1/admin/billing/config', globalCfg);
                 Utils.showToast('Global rollout settings saved', 'success');
+            }
+
+            // BI: salvataggio stima utenti/mese e costo unitario nel pricing (solo BI)
+            const costInput = document.getElementById('signup_credits_cost');
+            const newUsersInput = document.getElementById('bi_monthly_new_users');
+            if (costInput || newUsersInput) {
+                const pricingCfg = await API.get('/core/v1/admin/pricing/config');
+                const biUpdated = {
+                    ...pricingCfg,
+                    signup_initial_credits_cost_usd: parseFloat(costInput?.value || pricingCfg.signup_initial_credits_cost_usd || 0),
+                    bi_monthly_new_users: parseInt(newUsersInput?.value || pricingCfg.bi_monthly_new_users || 0)
+                };
+                await API.put('/core/v1/admin/pricing/config', biUpdated);
+                Utils.showToast('BI forecast saved', 'success');
             }
         } catch (error) {
             console.error('Save credits config error:', error);

@@ -21,6 +21,29 @@ const PricingComponent = {
                 const element = document.getElementById(id);
                 if (element) element.value = value;
             }
+
+            // Signup credits (operativo + BI)
+            const signupCredits = document.getElementById('signup_initial_credits');
+            if (signupCredits) signupCredits.value = config.signup_initial_credits || 0;
+            const signupCost = document.getElementById('signup_credits_cost');
+            if (signupCost) signupCost.value = config.signup_initial_credits_cost_usd || 0;
+            const biNewUsers = document.getElementById('bi_monthly_new_users');
+            if (biNewUsers && typeof config.bi_monthly_new_users !== 'undefined') biNewUsers.value = config.bi_monthly_new_users || 0;
+
+            // Forecast inline
+            const line = document.getElementById('signup_credits_forecast_line');
+            const out = document.getElementById('signup_credits_forecast_cost');
+            if (signupCost && biNewUsers && line && out) {
+                const update = () => {
+                    const cost = parseFloat(signupCost.value) || 0;
+                    const users = parseInt(biNewUsers.value) || 0;
+                    out.textContent = `$${(cost * users).toFixed(2)}`;
+                    line.style.display = 'block';
+                };
+                signupCost.addEventListener('input', update);
+                biNewUsers.addEventListener('input', update);
+                update();
+            }
             
             // Carica fixed costs se presenti
             const fixedCostsTable = document.getElementById('fixed-costs-table');
@@ -54,7 +77,10 @@ const PricingComponent = {
                 monthly_revenue_target_usd: parseFloat(document.getElementById('rev_target').value) || 1000,
                 usd_to_credits: parseFloat(document.getElementById('usd_to_credits').value) || 100,
                 target_margin_multiplier: parseFloat(document.getElementById('margin_mult').value) || 2,
-                minimum_operation_cost_credits: parseFloat(document.getElementById('min_op_cost').value) || 0.01
+                minimum_operation_cost_credits: parseFloat(document.getElementById('min_op_cost').value) || 0.01,
+                signup_initial_credits: parseFloat(document.getElementById('signup_initial_credits')?.value) || (existing.signup_initial_credits || 0),
+                signup_initial_credits_cost_usd: parseFloat(document.getElementById('signup_credits_cost')?.value) || (existing.signup_initial_credits_cost_usd || 0),
+                bi_monthly_new_users: parseInt(document.getElementById('bi_monthly_new_users')?.value) || (existing.bi_monthly_new_users || 0)
             };
             
             await API.put('/core/v1/admin/pricing/config', updated);
@@ -199,7 +225,7 @@ const PricingComponent = {
      * Simula pricing
      */
     simulatePricing(config) {
-        // Calcola fixed costs
+        // Calcola fixed costs + BI signup credits cost (se presenti)
         let fixed = 0;
         const fixedTable = document.getElementById('fixed-costs-table');
         if (fixedTable) {
@@ -213,6 +239,15 @@ const PricingComponent = {
         } else if (Array.isArray(config?.fixed_monthly_costs_usd)) {
             fixed = config.fixed_monthly_costs_usd.reduce((sum, c) => sum + (parseFloat(c.cost_usd) || 0), 0);
         }
+        // Aggiungi costo BI previsto per crediti signup: costo_unitario * nuovi_utenti_mese
+        const signupCostEl = document.getElementById('signup_credits_cost');
+        const biNewUsersEl = document.getElementById('bi_monthly_new_users');
+        let signupUnitCost = parseFloat(signupCostEl?.value);
+        if (Number.isNaN(signupUnitCost)) signupUnitCost = parseFloat(config?.signup_initial_credits_cost_usd) || 0;
+        let biNewUsers = parseInt(biNewUsersEl?.value);
+        if (Number.isNaN(biNewUsers)) biNewUsers = parseInt(config?.bi_monthly_new_users) || 0;
+        const monthlySignupBI = (signupUnitCost || 0) * (biNewUsers || 0);
+        fixed += monthlySignupBI;
         
         // Leggi valori correnti o usa config
         let revenue = parseFloat(document.getElementById('rev_target')?.value);
@@ -323,6 +358,15 @@ const PricingComponent = {
             if (config && config.fixed_monthly_costs_usd) {
                 totalFixedCosts = config.fixed_monthly_costs_usd.reduce((sum, c) => sum + (c.cost_usd || 0), 0);
             }
+            // Aggiungi anche il costo BI per signup credits, se disponibile
+            const signupCostEl = document.getElementById('signup_credits_cost');
+            const biNewUsersEl = document.getElementById('bi_monthly_new_users');
+            let signupUnitCost = parseFloat(signupCostEl?.value);
+            if (Number.isNaN(signupUnitCost)) signupUnitCost = parseFloat(config?.signup_initial_credits_cost_usd) || 0;
+            let biNewUsers = parseInt(biNewUsersEl?.value);
+            if (Number.isNaN(biNewUsers)) biNewUsers = parseInt(config?.bi_monthly_new_users) || 0;
+            const monthlySignupBI = (signupUnitCost || 0) * (biNewUsers || 0);
+            totalFixedCosts += monthlySignupBI;
             
             const overheadMultiplier = revenueTarget > 0 ? (1 + (totalFixedCosts / revenueTarget)) : 1.0;
             

@@ -53,6 +53,11 @@ class PricingConfig:
             return 0.0
         
         total_fixed_costs = sum(cost.cost_usd for cost in self.fixed_monthly_costs_usd)
+        # Include costo mensile stimato dei crediti di signup (solo BI)
+        try:
+            total_fixed_costs += float(self.signup_initial_credits_cost_usd or 0.0) * int(getattr(self, 'bi_monthly_new_users', 0) or 0)
+        except Exception:
+            pass
         return total_fixed_costs / self.monthly_revenue_target_usd
 
     @property
@@ -80,6 +85,8 @@ class PricingConfig:
     # Sconti e pacchetti (business)
     plan_discounts_percent: Dict[str, float] = field(default_factory=dict)  # plan_id -> percentuale sconto
     signup_initial_credits_cost_usd: float = 0.0  # costo da considerare a P&L per crediti di benvenuto
+    # BI: stima nuovi utenti/mese per forecast signup cost
+    bi_monthly_new_users: int = 0
 
     # Revenue recognition
     unused_credits_recognized_as_revenue: bool = True

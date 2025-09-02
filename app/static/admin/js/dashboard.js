@@ -29,7 +29,6 @@ function navigate(page, tab = null) {
         'business-scenarios': 'business-accordion',
         'billing-provider': 'billing-accordion',
         'billing-plans': 'billing-accordion',
-        'billing-credits': 'billing-accordion',
         'billing-checkout': 'billing-accordion',
         'observe-ai': 'observability-accordion',
         'observe-credits': 'observability-accordion',
@@ -176,11 +175,13 @@ async function loadPageData(page) {
         case 'billing-plans':
             await BillingComponent.loadPlansData();
             break;
-        case 'billing-credits':
-            await BillingComponent.loadCreditsConfig();
-            break;
         case 'billing-checkout':
             await BillingComponent.loadCheckoutData();
+            break;
+        case 'testing':
+            if (window.TestingComponent?.loadData) {
+                await TestingComponent.loadData();
+            }
             break;
     }
 }

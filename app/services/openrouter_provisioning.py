@@ -64,7 +64,13 @@ class OpenRouterProvisioningService:
         if not user_api_key:
             raise RuntimeError(f"OpenRouter non ha restituito una chiave API valida: {data}")
 
-        # 3) Salva la chiave nel profilo utente (come fa InsightDesk)
+        # 3) Metadati chiave
+        from hashlib import sha256
+        key_hash = sha256(user_api_key.encode('utf-8')).hexdigest()
+        created_at = datetime.utcnow().isoformat()
+        limit_val = float(limit or self.default_limit)
+
+        # 4) Salva la chiave nel profilo utente e i metadati (come InsightDesk)
         upsert_headers = {
             "apikey": self.service_key,
             "Authorization": f"Bearer {self.service_key}",
@@ -72,10 +78,15 @@ class OpenRouterProvisioningService:
             "Prefer": "resolution=merge-duplicates,return=representation",
         }
         
-        # Aggiorna il profilo con la chiave OpenRouter (solo colonne esistenti)
+        # Aggiorna il profilo con chiave e metadati OpenRouter (solo colonne esistenti)
         profile_payload = {
             "id": user_id,
             "openrouter_api_key": user_api_key,
+            "openrouter_key_hash": key_hash,
+            "openrouter_key_name": key_name,
+            "openrouter_key_limit": limit_val,
+            "openrouter_key_created_at": created_at,
+            "openrouter_provisioning_status": "active",
             "updated_at": datetime.utcnow().isoformat()
         }
         
@@ -93,11 +104,13 @@ class OpenRouterProvisioningService:
             pass
 
         return {
-            "key_name": key_name, 
+            "key_name": key_name,
             "api_key": user_api_key,
-            "limit": limit or self.default_limit,
+            "limit": limit_val,
             "status": "active",
-            "openrouter_response": data, 
+            "created_at": created_at,
+            "key_hash": key_hash,
+            "openrouter_response": data,
             "saved_user_api_key": True
         }
 
