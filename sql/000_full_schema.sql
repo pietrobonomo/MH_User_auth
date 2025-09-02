@@ -240,7 +240,7 @@ create table if not exists public.subscriptions (
   metadata jsonb default '{}'::jsonb,
   created_at timestamptz default now(),
   updated_at timestamptz default now(),
-  user_fk constraint subscriptions_user_id_fkey references public.profiles(id)
+  constraint subscriptions_user_id_fkey foreign key (user_id) references public.profiles(id)
 );
 
 create index if not exists idx_subscriptions_user on public.subscriptions(user_id);

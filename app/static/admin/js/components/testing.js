@@ -83,7 +83,7 @@ const TestingComponent = {
             
             output.innerHTML = '<div class="alert alert-info"><i class="fas fa-spinner fa-spin"></i> Creazione utente in corso...</div>';
             
-            const res = await API.post('/core/v1/setup/create-user', { email });
+            const res = await API.post('/core/v1/admin/users', { email });
             
             // Crea HTML dettagliato con password e OpenRouter
             output.innerHTML = `
