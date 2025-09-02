@@ -827,11 +827,14 @@ async executeFlow() {
                 status.classList.remove('badge-ghost', 'badge-error');
                 status.classList.add('badge-success');
                 status.textContent = 'Connected';
+                
+                // Sposta la timeline qui per evitare 'details is not defined'
+                this.addToTimeline('Provider test', 'success', details, 'Provider');
             } else {
                 throw new Error(response.error || 'Test failed');
             }
             
-            this.addToTimeline('Provider test', 'success', details, 'Provider');
+            // ... existing code ...
         } catch (e) {
             const details = {
                 status: 'ERROR',
