@@ -500,5 +500,26 @@ async rotateCredential(credentialKey) {
         } catch (error) {
             Utils.showToast(`Errore esportazione: ${error.message}`, 'error');
         }
-    }
+    },
+
+    async fixEncryptionIssues() {
+        if (!confirm('⚠️ RIPARAZIONE CREDENZIALI\n\nQuesto eliminerà le credenziali corrotte. Dovrai ri-inserirle manualmente.\n\nContinuare?')) {
+            return;
+        }
+        
+        try {
+            const response = await API.post('/core/v1/admin/credentials/fix-encryption', {}, {
+                headers: { 'X-Admin-Key': State.adminKey }
+            });
+            
+            Utils.showToast(`${response.message} (${response.deleted} eliminate)`, 'success');
+            
+            // Ricarica credenziali per mostrare lo stato pulito
+            setTimeout(() => {
+                this.loadCredentials();
+            }, 1000);
+            } catch (error) {
+            Utils.showToast(`Errore riparazione: ${error.message}`, 'error');
+            }
+        }
 };

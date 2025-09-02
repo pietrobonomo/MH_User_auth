@@ -303,7 +303,7 @@ const TestingComponent = {
         }
     },
 
-    async executeFlow() {
+async executeFlow() {
         const input = document.getElementById('test-input').value.trim();
         const appId = document.getElementById('test_app_id')?.value || 'default';
         const flowKey = document.getElementById('exec_flow_key')?.value;
@@ -810,22 +810,26 @@ const TestingComponent = {
                 throw new Error('Provider test not available');
             }
             
-            // Call the existing test method
-            await BillingComponent.testProviderConnection();
+            // Call the real test endpoint directly
+            const response = await API.post('/core/v1/admin/credentials/test?provider=lemonsqueezy', {}, {
+                headers: { 'X-Admin-Key': State.adminKey }
+            });
             
-            // Since BillingComponent shows toast, we just update our UI
-            const details = {
-                status: 'SUCCESS',
-                provider: 'LemonSqueezy',
-                api_key: '✓ Configured',
-                webhook_secret: '✓ Configured',
-                test_endpoint: '/v1/users/me'
-            };
-            
-            output.textContent = JSON.stringify(details, null, 2);
-            status.classList.remove('badge-ghost', 'badge-error');
-            status.classList.add('badge-success');
-            status.textContent = 'Connected';
+            if (response.success) {
+                const details = {
+                    status: 'SUCCESS',
+                    provider: 'LemonSqueezy',
+                    user: response.user || 'Connected',
+                    test_endpoint: '/v1/users/me'
+                };
+                
+                output.textContent = JSON.stringify(details, null, 2);
+                status.classList.remove('badge-ghost', 'badge-error');
+                status.classList.add('badge-success');
+                status.textContent = 'Connected';
+            } else {
+                throw new Error(response.error || 'Test failed');
+            }
             
             this.addToTimeline('Provider test', 'success', details, 'Provider');
         } catch (e) {

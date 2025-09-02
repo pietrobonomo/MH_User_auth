@@ -885,6 +885,13 @@ window.pageTemplates = {
                                 </div>
                                 <div class="card bg-base-200">
                                     <div class="card-body">
+                                        <h3 class="card-title text-sm">Fix Encryption Issues</h3>
+                                        <p class="text-xs text-base-content/60">Repair corrupted encrypted credentials</p>
+                                        <button class="btn btn-warning btn-sm mt-2" onclick="ConfigurationComponent.fixEncryptionIssues()">Fix Encryption</button>
+                                    </div>
+                                </div>
+                                <div class="card bg-base-200">
+                                    <div class="card-body">
                                         <h3 class="card-title text-sm">Export Credentials</h3>
                                         <p class="text-xs text-base-content/60">Export for backup (encrypted)</p>
                                         <button class="btn btn-info btn-sm mt-2" onclick="ConfigurationComponent.exportCredentials()">Export</button>

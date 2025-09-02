@@ -392,11 +392,14 @@ async def test_provider_connection(
     return await credentials_mgr.test_connection(provider)
 
 
+class RotateCredentialRequest(BaseModel):
+    provider: str
+    credential_key: str
+    new_value: str
+
 @router.post("/credentials/rotate")
 async def rotate_provider_key(
-    provider: str,
-    credential_key: str,
-    new_value: str,
+    payload: RotateCredentialRequest,
     Authorization: Optional[str] = Header(default=None),
     X_Admin_Key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
 ) -> Dict[str, Any]:
@@ -406,10 +409,10 @@ async def rotate_provider_key(
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
     
     credentials_mgr = CredentialsManager()
-    success = await credentials_mgr.set_credential(provider, credential_key, new_value)
+    success = await credentials_mgr.set_credential(payload.provider, payload.credential_key, payload.new_value)
     if success:
         credentials_mgr.clear_cache()  # Invalida cache
-        return {"status": "success", "message": f"Chiave {credential_key} aggiornata"}
+        return {"status": "success", "message": f"Chiave {payload.credential_key} aggiornata"}
     return {"status": "error", "message": "Errore aggiornamento chiave"}
 @router.post("/billing/checkout")
 async def admin_generate_checkout(
@@ -765,4 +768,50 @@ async def get_credentials_status(
             
     except Exception as e:
         return {"provider": provider, "configured": False, "error": str(e)}
+
+
+@router.post("/credentials/fix-encryption")
+async def fix_credentials_encryption(
+    X_Admin_Key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
+) -> Dict[str, Any]:
+    """Risolve problemi di decriptazione ri-criptando con la chiave corrente."""
+    if not (X_Admin_Key and X_Admin_Key == os.environ.get("CORE_ADMIN_KEY")):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Admin key richiesta")
+    
+    try:
+        # Recupera tutte le credenziali criptate da Supabase
+        supabase_url = os.environ.get("SUPABASE_URL")
+        service_key = os.environ.get("SUPABASE_SERVICE_KEY")
+        
+        if not supabase_url or not service_key:
+            raise HTTPException(status_code=500, detail="Supabase non configurato")
+        
+        import httpx
+        headers = {
+            "apikey": service_key,
+            "Authorization": f"Bearer {service_key}",
+            "Accept": "application/json"
+        }
+        
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(f"{supabase_url}/rest/v1/provider_credentials", headers=headers)
+            if resp.status_code != 200:
+                raise HTTPException(status_code=500, detail="Errore lettura credenziali da Supabase")
+            
+            credentials = resp.json()
+            if not credentials:
+                return {"status": "success", "message": "Nessuna credenziale da riparare", "fixed": 0}
+            
+            # Elimina tutte le credenziali esistenti (sono corrotte)
+            delete_resp = await client.delete(f"{supabase_url}/rest/v1/provider_credentials", headers=headers)
+            
+            return {
+                "status": "success", 
+                "message": f"Credenziali corrotte eliminate. Ri-inserisci le credenziali nella tab Security.",
+                "deleted": len(credentials),
+                "action_required": "Vai su Configuration → Security e ri-inserisci le credenziali LemonSqueezy e Flowise"
+            }
+                
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Errore riparazione: {str(e)}")
 
