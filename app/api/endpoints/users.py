@@ -111,6 +111,9 @@ async def admin_create_user(
         "initial_credits": initial,
         **({"credits_after": credits_after} if credits_after is not None else {}),
         "openrouter": openrouter,
+        # Retrocompatibilità con UI esistente
+        **({"openrouter_provisioned": openrouter.get("provisioned")} if isinstance(openrouter, dict) else {}),
+        **({"openrouter_key_name": openrouter.get("key_name")} if isinstance(openrouter, dict) and openrouter.get("provisioned") else {}),
     }
 
 
