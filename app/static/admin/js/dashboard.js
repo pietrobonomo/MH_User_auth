@@ -183,6 +183,16 @@ async function loadPageData(page) {
                 await TestingComponent.loadData();
             }
             break;
+        case 'config-setup':
+            if (window.ConfigurationComponent?.checkSetupStatus) {
+                await ConfigurationComponent.checkSetupStatus();
+            }
+            break;
+        case 'config-security':
+            if (window.ConfigurationComponent?.loadCredentials) {
+                await ConfigurationComponent.loadCredentials();
+            }
+            break;
     }
 }
 

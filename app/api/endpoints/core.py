@@ -9,6 +9,7 @@ from app.services.pricing_service import AdvancedPricingSystem as PricingService
 from app.adapters.provider_flowise import FlowiseAdapter
 from app.services.openrouter_user_keys import OpenRouterUserKeysService
 from app.services.openrouter_usage_service import OpenRouterUsageService
+from app.services.credentials_manager import CredentialsManager
 import logging
 import os
 import asyncio
@@ -37,7 +38,13 @@ auth_backend = SupabaseAuthBackend()
 credits_ledger = SupabaseCreditsLedger()
 openrouter = OpenRouterAdapter()
 pricing = PricingService(config_file=os.environ.get("PRICING_CONFIG_FILE", "data/config/pricing_config.json"))
-flowise = FlowiseAdapter()
+
+# FlowiseAdapter con credentials manager
+def get_flowise_adapter():
+    credentials_mgr = CredentialsManager()
+    return FlowiseAdapter(credentials_manager=credentials_mgr)
+
+flowise = get_flowise_adapter()
 
 # Lazy providers per evitare errori di import se env mancanti
 

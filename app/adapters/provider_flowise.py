@@ -19,9 +19,46 @@ from app.services.openrouter_user_keys import OpenRouterUserKeysService
 class FlowiseAdapter:
     """Adapter semplice per eseguire un flow Flowise via HTTP."""
 
+    def __init__(self, credentials_manager=None):
+        self.credentials_manager = credentials_manager
+        self._base_url_cache = None
+        self._api_key_cache = None
+
+    async def _get_base_url(self) -> Optional[str]:
+        """Ottiene base URL da credentials criptate o fallback env."""
+        if self._base_url_cache:
+            return self._base_url_cache
+        
+        if self.credentials_manager:
+            url = await self.credentials_manager.get_credential("flowise", "base_url")
+            if url:
+                self._base_url_cache = url
+                return url
+        
+        # Fallback a env
+        fallback = os.environ.get("FLOWISE_BASE_URL")
+        self._base_url_cache = fallback
+        return fallback
+
+    async def _get_api_key(self) -> Optional[str]:
+        """Ottiene API key da credentials criptate o fallback env."""
+        if self._api_key_cache:
+            return self._api_key_cache
+        
+        if self.credentials_manager:
+            key = await self.credentials_manager.get_credential("flowise", "api_key")
+            if key:
+                self._api_key_cache = key
+                return key
+        
+        # Fallback a env
+        fallback = os.environ.get("FLOWISE_API_KEY")
+        self._api_key_cache = fallback
+        return fallback
+
     async def execute(self, user_id: str, flow_id: str, data: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        base_url = os.environ.get("FLOWISE_BASE_URL")
-        api_key = os.environ.get("FLOWISE_API_KEY")
+        base_url = await self._get_base_url()
+        api_key = await self._get_api_key()
         if not base_url or not api_key:
             return ({"text": f"[stub] Flowise eseguito: {flow_id}", "data": data}, {"cost_credits": None})
 

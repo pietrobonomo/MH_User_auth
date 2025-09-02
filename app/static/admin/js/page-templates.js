@@ -437,7 +437,7 @@ window.pageTemplates = {
                     </div>
                     <button class="btn btn-primary mt-4" onclick="BillingComponent.addNewPlan()">
                         <i class="fas fa-plus"></i> Add New Plan
-                    </button>
+                            </button>
                 </div>
                 
                 <div id="tab-discounts" class="tab-content">
@@ -720,41 +720,177 @@ window.pageTemplates = {
             // Configuration - Security
             'config-security': () => `
                 <div class="mb-6">
-                    <h1 class="text-3xl font-bold">Security Settings</h1>
-                    <p class="text-base-content/60">Manage credentials and security settings</p>
+                    <h1 class="text-3xl font-bold">Security & Credentials</h1>
+                    <p class="text-base-content/60">Manage system credentials and security settings</p>
                 </div>
                 
                 <!-- Tabs for future expansion -->
                 <div class="tabs tabs-boxed mb-6">
                     <a href="#" class="tab tab-active" data-tab="credentials">Credentials</a>
-                    <a href="#" class="tab" data-tab="access">Access Control</a>
+                    <a href="#" class="tab" data-tab="rotation">Key Rotation</a>
                     <a href="#" class="tab" data-tab="audit">Audit Log</a>
                 </div>
                 
                 <div id="tab-credentials" class="tab-content active">
-                    <div class="card bg-base-100 shadow-xl">
+                    <!-- System Credentials -->
+                    <div class="card bg-base-100 shadow-xl mb-6">
                         <div class="card-body">
-                            <h2 class="card-title">Credential Management</h2>
-                            <div class="alert alert-warning mb-4">
-                                <i class="fas fa-exclamation-triangle"></i>
-                                <span>Handle credentials with care. They are encrypted before storage.</span>
+                            <h2 class="card-title">
+                                <i class="fas fa-server text-primary"></i>
+                                System Credentials
+                            </h2>
+                            <div class="alert alert-info mb-4">
+                                <i class="fas fa-info-circle"></i>
+                                <span>These credentials are required for core system functionality</span>
                             </div>
-                            <div class="flex gap-2">
-                                <button class="btn btn-secondary" onclick="rotateCredential('api_key')">
-                                    <i class="fas fa-key"></i> Rotate API Key
-                                </button>
-                                <button class="btn btn-secondary" onclick="rotateCredential('webhook_secret')">
-                                    <i class="fas fa-lock"></i> Rotate Webhook Secret
-                                </button>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div class="form-control">
+                                    <label class="label">
+                                        <span class="label-text">Supabase URL</span>
+                                    </label>
+                                    <input type="text" class="input input-bordered" id="sys_supabase_url" placeholder="https://xxx.supabase.co" />
+                                </div>
+                                <div class="form-control">
+                                    <label class="label">
+                                        <span class="label-text">Supabase Service Key</span>
+                                    </label>
+                                    <input type="password" class="input input-bordered" id="sys_supabase_key" placeholder="eyJhbGciOi..." />
+                                </div>
+                                <div class="form-control">
+                                    <label class="label">
+                                        <span class="label-text">Admin Key</span>
+                                    </label>
+                                    <input type="password" class="input input-bordered" id="sys_admin_key" placeholder="Generated admin key" />
+                                </div>
+                                <div class="form-control">
+                                    <label class="label">
+                                        <span class="label-text">Encryption Key</span>
+                                    </label>
+                                    <input type="password" class="input input-bordered" id="sys_encryption_key" placeholder="Fernet encryption key" />
+                                </div>
+                            </div>
+                            
+                            <div class="card-actions justify-end mt-4">
+                                <button class="btn btn-secondary" onclick="ConfigurationComponent.testSystemConnection()">Test Supabase</button>
+                                <button class="btn btn-primary" onclick="ConfigurationComponent.saveSystemCredentials()">Save System Credentials</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Provider Credentials -->
+                    <div class="card bg-base-100 shadow-xl mb-6">
+                        <div class="card-body">
+                            <h2 class="card-title">
+                                <i class="fas fa-plug text-warning"></i>
+                                Provider Credentials
+                            </h2>
+                            <div class="alert alert-warning mb-4">
+                                <i class="fas fa-shield-alt"></i>
+                                <span>These credentials are encrypted and stored in Supabase</span>
+                            </div>
+                            
+                            <!-- LemonSqueezy -->
+                            <div class="collapse collapse-arrow bg-base-200 mb-2">
+                                <input type="checkbox" />
+                                <div class="collapse-title font-medium">
+                                    <i class="fas fa-lemon text-yellow-500"></i>
+                                    LemonSqueezy Configuration
+                                </div>
+                                <div class="collapse-content">
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                        <div class="form-control">
+                                            <label class="label">
+                                                <span class="label-text">API Key</span>
+                                            </label>
+                                            <input type="password" class="input input-bordered" id="ls_api_key" placeholder="Your LemonSqueezy API key" />
+                                        </div>
+                                        <div class="form-control">
+                                            <label class="label">
+                                                <span class="label-text">Store ID</span>
+                                            </label>
+                                            <input type="text" class="input input-bordered" id="ls_store_id" placeholder="12345" />
+                                        </div>
+                                        <div class="form-control md:col-span-2">
+                                            <label class="label">
+                                                <span class="label-text">Webhook Secret</span>
+                                            </label>
+                                            <input type="password" class="input input-bordered" id="ls_webhook_secret" placeholder="Webhook signing secret" />
+                                        </div>
+                                    </div>
+                                    <div class="flex gap-2 mt-4">
+                                        <button class="btn btn-secondary btn-sm" onclick="ConfigurationComponent.testLemonSqueezy()">Test Connection</button>
+                                        <button class="btn btn-primary btn-sm" onclick="ConfigurationComponent.saveLemonSqueezy()">Save LemonSqueezy</button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Flowise -->
+                            <div class="collapse collapse-arrow bg-base-200">
+                                <input type="checkbox" />
+                                <div class="collapse-title font-medium">
+                                    <i class="fas fa-robot text-blue-500"></i>
+                                    Flowise/AI Configuration
+                                </div>
+                                <div class="collapse-content">
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                        <div class="form-control">
+                                            <label class="label">
+                                                <span class="label-text">Base URL</span>
+                                            </label>
+                                            <input type="text" class="input input-bordered" id="flowise_base_url" placeholder="https://your-flowise.com/api/v1/prediction" />
+                                        </div>
+                                        <div class="form-control">
+                                            <label class="label">
+                                                <span class="label-text">API Key</span>
+                                            </label>
+                                            <input type="password" class="input input-bordered" id="flowise_api_key" placeholder="Your Flowise API key" />
+                                        </div>
+                                    </div>
+                                    <div class="flex gap-2 mt-4">
+                                        <button class="btn btn-secondary btn-sm" onclick="ConfigurationComponent.testFlowise()">Test Connection</button>
+                                        <button class="btn btn-primary btn-sm" onclick="ConfigurationComponent.saveFlowise()">Save Flowise</button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
                 
-                <div id="tab-access" class="tab-content">
+                <div id="tab-rotation" class="tab-content">
                     <div class="card bg-base-100 shadow-xl">
                         <div class="card-body">
-                            <p class="text-center text-base-content/60">Access control settings coming soon...</p>
+                            <h2 class="card-title">Key Rotation & Management</h2>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div class="card bg-base-200">
+                                    <div class="card-body">
+                                        <h3 class="card-title text-sm">Generate New Admin Key</h3>
+                                        <p class="text-xs text-base-content/60">Generate a new secure admin key</p>
+                                        <button class="btn btn-warning btn-sm mt-2" onclick="ConfigurationComponent.generateNewAdminKey()">Generate</button>
+                                    </div>
+                                </div>
+                                <div class="card bg-base-200">
+                                    <div class="card-body">
+                                        <h3 class="card-title text-sm">Rotate Encryption Key</h3>
+                                        <p class="text-xs text-base-content/60">Generate new encryption key (re-encrypts all data)</p>
+                                        <button class="btn btn-error btn-sm mt-2" onclick="ConfigurationComponent.rotateEncryptionKey()">Rotate</button>
+                                    </div>
+                                </div>
+                                <div class="card bg-base-200">
+                                    <div class="card-body">
+                                        <h3 class="card-title text-sm">Clear Credentials Cache</h3>
+                                        <p class="text-xs text-base-content/60">Clear local credential cache</p>
+                                        <button class="btn btn-ghost btn-sm mt-2" onclick="ConfigurationComponent.clearCredentialsCache()">Clear Cache</button>
+                                    </div>
+                                </div>
+                                <div class="card bg-base-200">
+                                    <div class="card-body">
+                                        <h3 class="card-title text-sm">Export Credentials</h3>
+                                        <p class="text-xs text-base-content/60">Export for backup (encrypted)</p>
+                                        <button class="btn btn-info btn-sm mt-2" onclick="ConfigurationComponent.exportCredentials()">Export</button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -762,7 +898,24 @@ window.pageTemplates = {
                 <div id="tab-audit" class="tab-content">
                     <div class="card bg-base-100 shadow-xl">
                         <div class="card-body">
-                            <p class="text-center text-base-content/60">Security audit log coming soon...</p>
+                            <h2 class="card-title">Security Audit Log</h2>
+                            <div class="overflow-x-auto">
+                                <table class="table w-full">
+                                    <thead>
+                                        <tr>
+                                            <th>Timestamp</th>
+                                            <th>Action</th>
+                                            <th>Provider</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="audit-log-table">
+                                        <tr>
+                                            <td colspan="4" class="text-center text-base-content/60">No audit logs available</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -871,8 +1024,8 @@ window.pageTemplates = {
                         </div>
                     </div>
                     <!-- Test Infrastructure -->
-                    <div class="card bg-base-100 shadow-xl">
-                        <div class="card-body">
+                <div class="card bg-base-100 shadow-xl">
+                    <div class="card-body">
                             <h2 class="card-title">
                                 <i class="fas fa-database text-primary"></i>
                                 Infrastructure Tests
@@ -920,12 +1073,12 @@ window.pageTemplates = {
                             <!-- Create User -->
                             <div class="mb-4">
                                 <h3 class="font-semibold mb-2">Create Test User</h3>
-                                <div class="form-control">
+                            <div class="form-control">
                                     <label class="label">
                                         <span class="label-text">Email address</span>
                                     </label>
                                     <input type="email" class="input input-bordered" id="test_user_email" placeholder="test@example.com" />
-                                </div>
+                            </div>
                                 <button class="btn btn-sm btn-success w-full mt-3" onclick="TestingComponent.createUser()">
                                     <i class="fas fa-user-plus"></i> Create User
                                 </button>
@@ -939,19 +1092,19 @@ window.pageTemplates = {
                             <div>
                                 <h3 class="font-semibold mb-2">Affordability Check</h3>
                                 <div class="grid grid-cols-2 gap-2 mb-3">
-                                    <div class="form-control">
+                            <div class="form-control">
                                         <label class="label">
                                             <span class="label-text text-xs">User</span>
                                         </label>
                                         <select class="select select-bordered select-sm" id="aff_user_select"></select>
-                                    </div>
+                            </div>
                                     <div class="form-control">
                                         <label class="label">
                                             <span class="label-text text-xs">App</span>
                                         </label>
                                         <select class="select select-bordered select-sm" id="aff_app_select"></select>
-                                    </div>
-                                </div>
+                        </div>
+                        </div>
                                 <button class="btn btn-sm btn-primary w-full" onclick="TestingComponent.affordabilityCheck()">
                                     <i class="fas fa-check-circle"></i> Check Affordability
                                 </button>
@@ -974,11 +1127,11 @@ window.pageTemplates = {
                                     <h3 class="font-semibold mb-3">1. Generate Checkout</h3>
                                     <div class="grid grid-cols-2 gap-2 mb-3">
                                         <div class="form-control">
-                                            <label class="label">
+                            <label class="label">
                                                 <span class="label-text text-xs">User</span>
-                                            </label>
+                            </label>
                                             <select class="select select-bordered select-sm" id="test_checkout_user"></select>
-                                        </div>
+                        </div>
                                         <div class="form-control">
                                             <label class="label">
                                                 <span class="label-text text-xs">Plan</span>
@@ -1067,10 +1220,180 @@ window.pageTemplates = {
                             </div>
                             
                             <button class="btn btn-primary btn-lg w-full" onclick="TestingComponent.executeFlow()">
-                                <i class="fas fa-play"></i> Execute Flow
-                            </button>
+                            <i class="fas fa-play"></i> Execute Flow
+                        </button>
                             
                             <div id="test-output" class="mt-4"></div>
+                        </div>
+                    </div>
+                </div>
+            `
+        };
+
+        // Configuration - Initial Setup
+        window.pageTemplates['config-setup'] = () => {
+            return `
+                <div class="space-y-6">
+                    <div class="flex items-center gap-3">
+                        <i class="fas fa-rocket text-2xl text-primary"></i>
+                        <div>
+                            <h1 class="text-3xl font-bold">Initial Setup</h1>
+                            <p class="text-base-content/60">Configurazione sicura per il primo avvio</p>
+                        </div>
+                    </div>
+
+                    <!-- Status Check -->
+                    <div class="card bg-base-100 shadow-xl">
+                        <div class="card-body">
+                            <h2 class="card-title">
+                                <i class="fas fa-info-circle text-info"></i>
+                                Setup Status
+                            </h2>
+                            <div id="setup-status-content">
+                                <div class="flex items-center gap-2">
+                                    <span class="loading loading-spinner loading-sm"></span>
+                                    <span>Checking setup status...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Setup Form -->
+                    <div class="card bg-base-100 shadow-xl" id="setup-form-card">
+                        <div class="card-body">
+                            <h2 class="card-title">
+                                <i class="fas fa-cog text-warning"></i>
+                                Configuration
+                            </h2>
+                            
+                            <div class="alert alert-warning">
+                                <i class="fas fa-shield-alt"></i>
+                                <span><strong>Sicurezza:</strong> Le chiavi API saranno criptate e salvate su Supabase. Non verranno mai mostrate in plain text nei log.</span>
+                            </div>
+
+                            <!-- Step 1: Supabase -->
+                            <div class="form-control">
+                                <label class="label">
+                                    <span class="label-text font-semibold">
+                                        <span class="badge badge-primary badge-sm mr-2">1</span>
+                                        Supabase Connection
+                                    </span>
+                                </label>
+                                
+                                <div class="grid grid-cols-1 gap-4">
+                                    <div class="form-control">
+                                        <label class="label">
+                                            <span class="label-text">Supabase URL</span>
+                                        </label>
+                                        <input type="text" class="input input-bordered" id="supabase_url" placeholder="https://xxx.supabase.co" />
+                                    </div>
+                                    
+                                    <div class="form-control">
+                                        <label class="label">
+                                            <span class="label-text">Supabase Service Key</span>
+                                        </label>
+                                        <input type="password" class="input input-bordered" id="supabase_key" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="divider"></div>
+
+                            <!-- Step 2: LemonSqueezy -->
+                            <div class="form-control">
+                                <label class="label">
+                                    <span class="label-text font-semibold">
+                                        <span class="badge badge-primary badge-sm mr-2">2</span>
+                                        LemonSqueezy Integration
+                                    </span>
+                                </label>
+                                
+                                <div class="grid grid-cols-1 gap-4">
+                                    <div class="form-control">
+                                        <label class="label">
+                                            <span class="label-text">LemonSqueezy API Key</span>
+                                        </label>
+                                        <input type="password" class="input input-bordered" id="ls_api_key" placeholder="eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9..." />
+                                    </div>
+                                    
+                                    <div class="form-control">
+                                        <label class="label">
+                                            <span class="label-text">Store ID</span>
+                                        </label>
+                                        <input type="text" class="input input-bordered" id="ls_store_id" placeholder="199395" />
+                                    </div>
+                                    
+                                    <div class="form-control">
+                                        <label class="label">
+                                            <span class="label-text">Webhook Secret</span>
+                                        </label>
+                                        <input type="password" class="input input-bordered" id="ls_webhook_secret" placeholder="a93effd09a763d6c164aa61d2ccac4a4" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="divider"></div>
+
+                            <!-- Step 3: Flowise/AI Integration -->
+                            <div class="form-control">
+                                <label class="label">
+                                    <span class="label-text font-semibold">
+                                        <span class="badge badge-primary badge-sm mr-2">3</span>
+                                        Flowise/AI Integration
+                                    </span>
+                                </label>
+                                
+                                <div class="grid grid-cols-1 gap-4">
+                                    <div class="form-control">
+                                        <label class="label">
+                                            <span class="label-text">Flowise Base URL</span>
+                                        </label>
+                                        <input type="text" class="input input-bordered" id="flowise_base_url" placeholder="https://your-flowise.com/api/v1/prediction" />
+                                        <label class="label">
+                                            <span class="label-text-alt">URL del tuo server Flowise per eseguire i flow AI</span>
+                                        </label>
+                                    </div>
+                                    
+                                    <div class="form-control">
+                                        <label class="label">
+                                            <span class="label-text">Flowise API Key</span>
+                                        </label>
+                                        <input type="password" class="input input-bordered" id="flowise_api_key" placeholder="your-flowise-api-key" />
+                                        <label class="label">
+                                            <span class="label-text-alt">Chiave API per autenticarsi con Flowise</span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="divider"></div>
+
+                            <!-- Step 4: Project Settings -->
+                            <div class="form-control">
+                                <label class="label">
+                                    <span class="label-text font-semibold">
+                                        <span class="badge badge-primary badge-sm mr-2">4</span>
+                                        Project Settings
+                                    </span>
+                                </label>
+                                
+                                <div class="form-control">
+                                    <label class="label">
+                                        <span class="label-text">App/Project Name</span>
+                                    </label>
+                                    <input type="text" class="input input-bordered" id="app_name" value="default" placeholder="nome-progetto" />
+                                </div>
+                            </div>
+
+                            <!-- Actions -->
+                            <div class="card-actions justify-end mt-6">
+                                <button class="btn btn-primary btn-lg" onclick="ConfigurationComponent.runSetup()" id="setup_btn">
+                                    <i class="fas fa-rocket"></i>
+                                    Completa Setup
+                                </button>
+                            </div>
+                            
+                            <div id="setup-result" class="mt-4"></div>
                         </div>
                     </div>
                 </div>

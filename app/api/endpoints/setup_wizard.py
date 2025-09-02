@@ -25,6 +25,8 @@ class SetupRequest(BaseModel):
     lemonsqueezy_api_key: str = Field(..., description="API Key LemonSqueezy")
     lemonsqueezy_store_id: str = Field(..., description="Store ID LemonSqueezy")
     lemonsqueezy_webhook_secret: str = Field(..., description="Webhook Secret LemonSqueezy")
+    flowise_base_url: Optional[str] = Field(default=None, description="URL Base Flowise")
+    flowise_api_key: Optional[str] = Field(default=None, description="API Key Flowise")
     app_name: str = Field(default="default", description="Nome app/progetto")
 
 
@@ -56,6 +58,12 @@ async def complete_setup(payload: SetupRequest) -> Dict[str, Any]:
         # Salva chiavi LemonSqueezy
         await credentials_mgr.set_credential("lemonsqueezy", "api_key", payload.lemonsqueezy_api_key)
         await credentials_mgr.set_credential("lemonsqueezy", "webhook_secret", payload.lemonsqueezy_webhook_secret)
+        
+        # Salva chiavi Flowise (se fornite)
+        if payload.flowise_base_url:
+            await credentials_mgr.set_credential("flowise", "base_url", payload.flowise_base_url)
+        if payload.flowise_api_key:
+            await credentials_mgr.set_credential("flowise", "api_key", payload.flowise_api_key)
         
         # 5) Salva config billing base
         billing_cfg = BillingConfigService()
@@ -370,6 +378,7 @@ async def setup_status() -> Dict[str, Any]:
         # Verifica se esistono credentials
         credentials_mgr = CredentialsManager()
         ls_api_key = await credentials_mgr.get_credential("lemonsqueezy", "api_key")
+        flowise_base_url = await credentials_mgr.get_credential("flowise", "base_url")
         
         supabase_configured = bool(os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_SERVICE_KEY"))
         admin_key_configured = bool(os.environ.get("CORE_ADMIN_KEY"))
@@ -379,6 +388,7 @@ async def setup_status() -> Dict[str, Any]:
             "supabase_configured": supabase_configured,
             "admin_key_configured": admin_key_configured,
             "credentials_encrypted": bool(ls_api_key),
+            "flowise_configured": bool(flowise_base_url),
             "next_action": "complete" if not ls_api_key else "configure_plans"
         }
     except Exception as e:
@@ -387,3 +397,49 @@ async def setup_status() -> Dict[str, Any]:
             "error": str(e),
             "next_action": "complete"
         }
+
+
+@router.post("/reset")
+async def reset_setup(
+    X_Admin_Key: Optional[str] = Header(default=None, alias="X-Admin-Key")
+) -> Dict[str, Any]:
+    """Reset del setup - elimina tutte le credenziali salvate."""
+    try:
+        # Verifica admin key
+        core_admin_key = os.environ.get("CORE_ADMIN_KEY")
+        if not X_Admin_Key or not core_admin_key or X_Admin_Key != core_admin_key:
+            raise HTTPException(status_code=401, detail="Admin key richiesta per reset setup")
+        
+        credentials_mgr = CredentialsManager()
+        
+        # Elimina tutte le credenziali esistenti
+        providers_to_reset = ["lemonsqueezy", "flowise"]
+        credentials_to_reset = {
+            "lemonsqueezy": ["api_key", "webhook_secret"],
+            "flowise": ["base_url", "api_key"]
+        }
+        
+        reset_count = 0
+        for provider in providers_to_reset:
+            for credential_key in credentials_to_reset.get(provider, []):
+                try:
+                    # Prova a eliminare la credenziale (se esiste)
+                    existing = await credentials_mgr.get_credential(provider, credential_key)
+                    if existing:
+                        # Non c'è un metodo delete diretto, quindi impostiamo valore vuoto
+                        await credentials_mgr.set_credential(provider, credential_key, "")
+                        reset_count += 1
+                except:
+                    pass  # Ignora errori se la credenziale non esiste
+        
+        return {
+            "status": "success",
+            "message": f"Setup resettato! {reset_count} credenziali eliminate.",
+            "reset_credentials": reset_count,
+            "next_action": "Ricarica la pagina per rifare il setup completo"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Errore durante reset: {str(e)}")
