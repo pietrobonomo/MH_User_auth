@@ -8,6 +8,7 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 import httpx
 from pathlib import Path
+from fastapi.responses import Response
 
 # Carica variabili da .env PRIMA di importare router/endpoints che le usano
 load_dotenv()
@@ -42,6 +43,11 @@ app.include_router(api_router, prefix="/core/v1")
 static_path = Path(__file__).parent / "static"
 if static_path.exists():
     app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
+
+# Favicon placeholder to avoid 404 spam in dev
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon() -> Response:
+    return Response(content=b"", media_type="image/x-icon")
 
 @app.get("/health")
 async def health() -> Dict[str, str]:

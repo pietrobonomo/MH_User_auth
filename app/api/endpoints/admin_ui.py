@@ -5,11 +5,50 @@ Serve il template HTML e i file statici sono gestiti da FastAPI.
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse
 from pathlib import Path
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+import os
+import secrets
 
-router = APIRouter()
+security = HTTPBasic()
+
+
+def _ui_enabled() -> None:
+    if os.environ.get("ADMIN_UI_ENABLED", "1").lower() in ("0", "false", "no"):  # hide UI entirely
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+
+
+def _is_running_on_railway() -> bool:
+    keys = (
+        "RAILWAY_STATIC_URL",
+        "RAILWAY_PUBLIC_DOMAIN",
+        "RAILWAY_PROJECT_ID",
+        "RAILWAY_ENVIRONMENT",
+    )
+    return any(os.environ.get(k) for k in keys)
+
+
+def _require_basic_auth(credentials: HTTPBasicCredentials = Depends(security)) -> None:
+    _ui_enabled()
+    username = os.environ.get("ADMIN_UI_USER")
+    password = os.environ.get("ADMIN_UI_PASSWORD")
+    if not (username and password):
+        # In produzione (Railway) richiede configurazione esplicita; in locale fallback sicuro dev
+        if _is_running_on_railway():
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Admin UI auth not configured")
+        username = "admin"
+        password = "admin"
+    if not (secrets.compare_digest(credentials.username, username) and secrets.compare_digest(credentials.password, password)):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+
+
+router = APIRouter(dependencies=[Depends(_require_basic_auth)])
 
 
 @router.get("/", response_class=HTMLResponse, include_in_schema=False)

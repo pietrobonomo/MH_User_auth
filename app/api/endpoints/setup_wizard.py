@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from fastapi import APIRouter, HTTPException, status, Header
+from fastapi import APIRouter, HTTPException, status, Header, Depends
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional
@@ -16,7 +16,37 @@ from cryptography.fernet import Fernet
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+import secrets as _secrets
+
+security = HTTPBasic()
+
+
+def _is_running_on_railway() -> bool:
+    import os as _os
+    keys = (
+        "RAILWAY_STATIC_URL",
+        "RAILWAY_PUBLIC_DOMAIN",
+        "RAILWAY_PROJECT_ID",
+        "RAILWAY_ENVIRONMENT",
+    )
+    return any(_os.environ.get(k) for k in keys)
+
+
+def _require_wizard_basic(credentials: HTTPBasicCredentials = Depends(security)) -> None:
+    # Reuse same ADMIN_UI auth for wizard
+    username = os.environ.get("ADMIN_UI_USER")
+    password = os.environ.get("ADMIN_UI_PASSWORD")
+    if not (username and password):
+        if _is_running_on_railway():
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Admin UI auth not configured")
+        username = "admin"
+        password = "admin"
+    if not (secrets.compare_digest(credentials.username, username) and secrets.compare_digest(credentials.password, password)):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, headers={"WWW-Authenticate": "Basic"})
+
+
+router = APIRouter(dependencies=[Depends(_require_wizard_basic)])
 
 
 class SetupRequest(BaseModel):
