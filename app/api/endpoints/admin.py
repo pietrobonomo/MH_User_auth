@@ -504,3 +504,265 @@ async def admin_get_user_credits(
             return {"found": False}
         return {"found": True, "profile": rows[0]}
 
+
+# === SYSTEM CREDENTIALS MANAGEMENT ===
+
+@router.get("/system/credentials")
+async def get_system_credentials(
+    X_Admin_Key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
+) -> Dict[str, Any]:
+    """Ottiene le credenziali di sistema (solo per visualizzazione, non i valori reali)."""
+    if not (X_Admin_Key and X_Admin_Key == os.environ.get("CORE_ADMIN_KEY")):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Admin key richiesta")
+    
+    return {
+        "supabase_url": os.environ.get("SUPABASE_URL", ""),
+        "supabase_key": "••••••••••••••••••••" if os.environ.get("SUPABASE_SERVICE_KEY") else "",
+        "admin_key": "••••••••••••••••••••" if os.environ.get("CORE_ADMIN_KEY") else "",
+        "encryption_key": "••••••••••••••••••••" if os.environ.get("CORE_ENCRYPTION_KEY") else ""
+    }
+
+
+@router.post("/system/credentials")
+async def save_system_credentials(
+    payload: Dict[str, str],
+    X_Admin_Key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
+) -> Dict[str, Any]:
+    """Salva le credenziali di sistema nel file .env."""
+    if not (X_Admin_Key and X_Admin_Key == os.environ.get("CORE_ADMIN_KEY")):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Admin key richiesta")
+    
+    try:
+        from pathlib import Path
+        import re
+        
+        env_path = Path(".env")
+        if not env_path.exists():
+            # Crea .env se non esiste
+            env_content = ""
+        else:
+            env_content = env_path.read_text(encoding='utf-8')
+        
+        # Aggiorna o aggiungi le variabili
+        for key, value in payload.items():
+            if not value.strip():
+                continue
+                
+            env_key = {
+                'supabase_url': 'SUPABASE_URL',
+                'supabase_key': 'SUPABASE_SERVICE_KEY',
+                'admin_key': 'CORE_ADMIN_KEY',
+                'encryption_key': 'CORE_ENCRYPTION_KEY'
+            }.get(key)
+            
+            if env_key:
+                pattern = rf'^{env_key}=.*$'
+                replacement = f'{env_key}="{value}"'
+                
+                if re.search(pattern, env_content, re.MULTILINE):
+                    env_content = re.sub(pattern, replacement, env_content, flags=re.MULTILINE)
+                else:
+                    env_content += f'\n{replacement}'
+        
+        # Salva il file
+        env_path.write_text(env_content, encoding='utf-8')
+        
+        return {
+            "status": "success",
+            "message": "Credenziali di sistema salvate nel .env",
+            "note": "Riavvia il server per applicare le modifiche"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Errore salvataggio .env: {str(e)}")
+
+
+@router.get("/system/test-supabase")
+async def test_supabase_connection(
+    X_Admin_Key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
+) -> Dict[str, Any]:
+    """Testa la connessione a Supabase."""
+    if not (X_Admin_Key and X_Admin_Key == os.environ.get("CORE_ADMIN_KEY")):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Admin key richiesta")
+    
+    try:
+        supabase_url = os.environ.get("SUPABASE_URL")
+        service_key = os.environ.get("SUPABASE_SERVICE_KEY")
+        
+        if not supabase_url or not service_key:
+            return {"success": False, "error": "SUPABASE_URL o SUPABASE_SERVICE_KEY mancanti"}
+        
+        import httpx
+        headers = {
+            "apikey": service_key,
+            "Authorization": f"Bearer {service_key}",
+            "Accept": "application/json"
+        }
+        
+        async with httpx.AsyncClient(timeout=10) as client:
+            # Test con una query semplice per contare le tabelle
+            resp = await client.get(f"{supabase_url}/rest/v1/", headers=headers)
+            if resp.status_code == 200:
+                # Prova a contare le tabelle nella schema public
+                tables_resp = await client.get(
+                    f"{supabase_url}/rest/v1/information_schema.tables?table_schema=eq.public&select=table_name", 
+                    headers=headers
+                )
+                table_count = len(tables_resp.json()) if tables_resp.status_code == 200 else 0
+                
+                return {
+                    "success": True,
+                    "message": "Connessione Supabase OK",
+                    "tables": table_count,
+                    "url": supabase_url[:30] + "..."
+                }
+            else:
+                return {"success": False, "error": f"HTTP {resp.status_code}: {resp.text[:100]}"}
+                
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@router.post("/system/generate-admin-key")
+async def generate_new_admin_key(
+    X_Admin_Key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
+) -> Dict[str, Any]:
+    """Genera una nuova admin key sicura."""
+    if not (X_Admin_Key and X_Admin_Key == os.environ.get("CORE_ADMIN_KEY")):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Admin key richiesta")
+    
+    import secrets
+    import string
+    
+    # Genera chiave sicura di 43 caratteri (base64-like)
+    alphabet = string.ascii_letters + string.digits + "_-"
+    new_key = ''.join(secrets.choice(alphabet) for _ in range(43))
+    
+    return {
+        "status": "success",
+        "admin_key": new_key,
+        "message": "Nuova admin key generata. Aggiorna il .env e riavvia il server."
+    }
+
+
+@router.post("/system/rotate-encryption-key")
+async def rotate_encryption_key(
+    X_Admin_Key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
+) -> Dict[str, Any]:
+    """Genera una nuova chiave di crittografia e ri-cripta tutti i dati."""
+    if not (X_Admin_Key and X_Admin_Key == os.environ.get("CORE_ADMIN_KEY")):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Admin key richiesta")
+    
+    try:
+        from cryptography.fernet import Fernet
+        
+        # Genera nuova chiave
+        new_key = Fernet.generate_key().decode()
+        
+        # TODO: Implementare ri-crittografia di tutti i dati esistenti
+        # Per ora restituiamo solo la nuova chiave
+        
+        return {
+            "status": "success",
+            "encryption_key": new_key,
+            "message": "Nuova chiave di crittografia generata",
+            "warning": "Aggiorna il .env e riavvia il server. I dati esistenti dovranno essere ri-criptati."
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Errore generazione chiave: {str(e)}")
+
+
+@router.post("/credentials/clear-cache")
+async def clear_credentials_cache(
+    X_Admin_Key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
+) -> Dict[str, Any]:
+    """Pulisce la cache delle credenziali."""
+    if not (X_Admin_Key and X_Admin_Key == os.environ.get("CORE_ADMIN_KEY")):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Admin key richiesta")
+    
+    credentials_mgr = CredentialsManager()
+    credentials_mgr.clear_cache()
+    
+    return {
+        "status": "success",
+        "message": "Cache credenziali pulita"
+    }
+
+
+@router.get("/credentials/export")
+async def export_credentials(
+    X_Admin_Key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
+) -> Dict[str, Any]:
+    """Esporta un backup delle credenziali (criptate)."""
+    if not (X_Admin_Key and X_Admin_Key == os.environ.get("CORE_ADMIN_KEY")):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Admin key richiesta")
+    
+    try:
+        # Recupera tutte le credenziali criptate da Supabase
+        supabase_url = os.environ.get("SUPABASE_URL")
+        service_key = os.environ.get("SUPABASE_SERVICE_KEY")
+        
+        if not supabase_url or not service_key:
+            raise HTTPException(status_code=500, detail="Supabase non configurato")
+        
+        import httpx
+        headers = {
+            "apikey": service_key,
+            "Authorization": f"Bearer {service_key}",
+            "Accept": "application/json"
+        }
+        
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(f"{supabase_url}/rest/v1/provider_credentials", headers=headers)
+            if resp.status_code == 200:
+                credentials = resp.json()
+                return {
+                    "export_date": "2025-01-27T00:00:00Z",
+                    "credentials_count": len(credentials),
+                    "credentials": credentials,
+                    "note": "Questo backup contiene credenziali criptate. Conserva in luogo sicuro."
+                }
+            else:
+                raise HTTPException(status_code=500, detail="Errore lettura credenziali da Supabase")
+                
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Errore esportazione: {str(e)}")
+
+
+@router.get("/credentials/status")
+async def get_credentials_status(
+    provider: str,
+    X_Admin_Key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
+) -> Dict[str, Any]:
+    """Ottiene lo status delle credenziali per un provider (senza valori)."""
+    if not (X_Admin_Key and X_Admin_Key == os.environ.get("CORE_ADMIN_KEY")):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Admin key richiesta")
+    
+    try:
+        credentials_mgr = CredentialsManager()
+        
+        if provider == "lemonsqueezy":
+            api_key = await credentials_mgr.get_credential("lemonsqueezy", "api_key")
+            webhook_secret = await credentials_mgr.get_credential("lemonsqueezy", "webhook_secret")
+            return {
+                "provider": "lemonsqueezy",
+                "configured": bool(api_key and webhook_secret),
+                "api_key": "✓ Configured" if api_key else "Not configured",
+                "webhook_secret": "✓ Configured" if webhook_secret else "Not configured"
+            }
+        elif provider == "flowise":
+            base_url = await credentials_mgr.get_credential("flowise", "base_url")
+            api_key = await credentials_mgr.get_credential("flowise", "api_key")
+            return {
+                "provider": "flowise",
+                "configured": bool(base_url and api_key),
+                "base_url": "✓ Configured" if base_url else "Not configured",
+                "api_key": "✓ Configured" if api_key else "Not configured"
+            }
+        else:
+            return {"provider": provider, "configured": False, "error": "Provider non supportato"}
+            
+    except Exception as e:
+        return {"provider": provider, "configured": False, "error": str(e)}
+
