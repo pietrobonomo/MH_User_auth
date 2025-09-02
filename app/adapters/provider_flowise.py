@@ -49,6 +49,25 @@ class FlowiseAdapter:
         
         # Applica enhancement semplice come InsightDesk
         enriched = _inject_openrouter_identity(data, user_id, await key_service.get_user_key_name(user_id))
+
+        # Normalizza l'input per il proxy Flowise: usa solo i campi top-level
+        # - Se è stringa, passa come question e input
+        # - Se è oggetto, passa come JSON stringificato
+        try:
+            question_str: Optional[str] = None
+            if isinstance(data, dict):
+                if "question" in data:
+                    question_str = data["question"] if isinstance(data["question"], str) else json.dumps(data["question"], ensure_ascii=False)
+                elif "input" in data:
+                    question_str = data["input"] if isinstance(data["input"], str) else json.dumps(data["input"], ensure_ascii=False)
+                elif "text" in data:
+                    question_str = data["text"] if isinstance(data["text"], str) else json.dumps(data["text"], ensure_ascii=False)
+            if question_str is not None:
+                enriched["question"] = question_str
+                enriched["input"] = question_str
+        except Exception:
+            # Non bloccare la chiamata se la normalizzazione fallisce
+            pass
         
         # Inietta chiavi OpenRouter nei nodi AgentV2 se necessario
         if node_list and user_api_key:

@@ -114,6 +114,7 @@ async def admin_create_user(
         # Retrocompatibilità con UI esistente
         **({"openrouter_provisioned": openrouter.get("provisioned")} if isinstance(openrouter, dict) else {}),
         **({"openrouter_key_name": openrouter.get("key_name")} if isinstance(openrouter, dict) and openrouter.get("provisioned") else {}),
+        **({"openrouter_key_limit": openrouter.get("limit")} if isinstance(openrouter, dict) and openrouter.get("provisioned") else {}),
     }
 
 

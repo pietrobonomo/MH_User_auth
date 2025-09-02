@@ -65,7 +65,12 @@ async def _supabase_upsert_pricing_config(app_id: str, config: Dict) -> bool:
         "Content-Type": "application/json",
         "Prefer": "resolution=merge-duplicates,return=representation",
     }
-    payload = {"app_id": app_id, "config": config}
+    # Hard filter: impedisce che chiavi di billing finiscano in pricing_configs
+    filtered = dict(config)
+    for k in ["plans", "provider", "lemonsqueezy", "billing", "variant_map"]:
+        if k in filtered:
+            filtered.pop(k, None)
+    payload = {"app_id": app_id, "config": filtered}
     async with httpx.AsyncClient(timeout=12.0) as client:
         r = await client.post(f"{supabase_url}/rest/v1/pricing_configs", headers=headers, json=payload)
     return r.status_code in (200, 201)

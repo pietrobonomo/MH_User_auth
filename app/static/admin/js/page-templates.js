@@ -1024,14 +1024,7 @@ window.pageTemplates = {
                                 </div>
                             </div>
                             
-                            <!-- Timeline -->
-                            <div class="divider"></div>
-                            <div>
-                                <h3 class="font-semibold mb-3">Test Timeline</h3>
-                                <div id="test-timeline" class="space-y-2">
-                                    <p class="text-sm text-base-content/60">No tests executed yet</p>
-                                </div>
-                            </div>
+
                         </div>
                     </div>
 
@@ -1056,7 +1049,15 @@ window.pageTemplates = {
                                     </label>
                                     <select class="select select-bordered" id="exec_flow_key"></select>
                                 </div>
+                                <div class="form-control">
+                                    <label class="label">
+                                        <span class="label-text">User</span>
+                                    </label>
+                                    <select class="select select-bordered" id="exec_user_select"></select>
+                                </div>
                             </div>
+
+
                             
                             <div class="form-control mb-4">
                                 <label class="label">

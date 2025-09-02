@@ -3,6 +3,29 @@
  */
 const TestingComponent = {
     _polling: null,
+    _lastRunKey: 'core_test_last_exec',
+    _saveLastRun(payload, res, meta) {
+        try {
+            const data = { ts: Date.now(), payload, res, meta };
+            localStorage.setItem(this._lastRunKey, JSON.stringify(data));
+        } catch (_) {}
+    },
+    _restoreLastRun() {
+        try {
+            const raw = localStorage.getItem(this._lastRunKey);
+            if (!raw) return;
+            const { res, payload, meta } = JSON.parse(raw);
+            const el = document.getElementById('test-output');
+            if (!el) return;
+            el.innerHTML = `
+                <div class="alert alert-info">
+                    <i class="fas fa-history"></i>
+                    <span>Ripristinato ultimo test</span>
+                </div>
+                <pre class="bg-base-200 p-2 rounded text-xs overflow-auto max-h-48 whitespace-pre-wrap break-words">${JSON.stringify({ payload, res, meta }, null, 2)}</pre>
+            `;
+        } catch (_) {}
+    },
     async loadData() {
         try {
             // App IDs
@@ -14,10 +37,22 @@ const TestingComponent = {
 
             // Users
             const users = await API.get('/core/v1/admin/users?limit=100');
+            const userOptions = (users.users || []).map(u => `<option value="${u.id}" data-email="${u.email}">${u.email} (${u.credits||0})</option>`).join('');
             const userSelect = document.getElementById('test_checkout_user');
             const affUser = document.getElementById('aff_user_select');
-            if (userSelect) userSelect.innerHTML = (users.users || []).map(u => `<option value="${u.id}">${u.email} (${u.credits||0})</option>`).join('');
-            if (affUser) affUser.innerHTML = (users.users || []).map(u => `<option value="${u.id}">${u.email} (${u.credits||0})</option>`).join('');
+            const execUser = document.getElementById('exec_user_select');
+            if (userSelect) userSelect.innerHTML = userOptions;
+            if (affUser) affUser.innerHTML = userOptions;
+            if (execUser) {
+                execUser.innerHTML = userOptions;
+                execUser.onchange = () => {
+                    const opt = execUser.options[execUser.selectedIndex];
+                    const email = opt ? opt.getAttribute('data-email') : '';
+                    const emailInput = document.getElementById('exec_user_email');
+                    if (emailInput) emailInput.value = email || '';
+                };
+                execUser.onchange();
+            }
 
             // Plans
             const plans = await API.get('/core/v1/billing/plans');
@@ -31,6 +66,9 @@ const TestingComponent = {
             // Flow keys for selected app
             await this.loadFlowKeys();
             if (appSelect) appSelect.onchange = () => this.loadFlowKeys();
+
+            // Ripristina ultimo test se presente
+            this._restoreLastRun();
         } catch (e) {
             console.warn('Testing loadData error:', e);
         }
@@ -102,7 +140,7 @@ const TestingComponent = {
                                 <li><strong>Email:</strong> ${res.email || email}</li>
                                 ${res.password ? `
                                 <li>
-                                    <strong>Password (chiave provisioning):</strong> 
+                                    <strong>Password temporanea:</strong> 
                                     <code class="text-xs bg-warning/30 px-2 py-1 rounded font-mono">${res.password}</code>
                                 </li>
                                 ` : ''}
@@ -125,6 +163,7 @@ const TestingComponent = {
                                 <ul class="text-sm space-y-1">
                                     <li><strong>Status:</strong> <span class="badge badge-success badge-sm">Provisioned</span></li>
                                     ${res.openrouter_key_name ? `<li><strong>Key Name:</strong> <code class="text-xs bg-base-300 px-1 rounded">${res.openrouter_key_name}</code></li>` : ''}
+                                    ${typeof res.openrouter_key_limit !== 'undefined' ? `<li><strong>Spending limit:</strong> $${res.openrouter_key_limit}</li>` : ''}
                                     <li class="text-xs text-success">✓ Utente pronto per eseguire flow AI</li>
                                 </ul>
                             ` : `
@@ -158,7 +197,7 @@ const TestingComponent = {
                 email: res.email,
                 initial_credits: res.initial_credits,
                 has_password: !!res.password
-            });
+            }, 'Users');
         } catch (e) {
             document.getElementById('test-user-output').innerHTML = `
                 <div class="alert alert-error">
@@ -167,7 +206,7 @@ const TestingComponent = {
                 </div>
             `;
             
-            this.addToTimeline('Creazione utente fallita', 'error', { error: e.message });
+            this.addToTimeline('Creazione utente fallita', 'error', { error: e.message }, 'Users');
         }
     },
 
@@ -179,14 +218,18 @@ const TestingComponent = {
                 document.getElementById('test-checkout-output').textContent = 'user_id o plan_id mancanti';
                 return;
             }
+            this.addToTimeline('Generate checkout', 'info', { user, plan }, 'Checkout');
             const res = await API.post(`/core/v1/admin/billing/checkout?user_id=${encodeURIComponent(user)}&plan_id=${encodeURIComponent(plan)}`);
             if (res.checkout?.checkout_url) {
                 document.getElementById('test-checkout-output').innerHTML = `<a class="link" href="${res.checkout.checkout_url}" target="_blank">Apri checkout</a>`;
+                this.addToTimeline('Checkout URL generato', 'success', { url: res.checkout.checkout_url }, 'Checkout');
             } else {
                 document.getElementById('test-checkout-output').textContent = JSON.stringify(res);
+                this.addToTimeline('Checkout response', 'info', res, 'Checkout');
             }
         } catch (e) {
             document.getElementById('test-checkout-output').textContent = `ERROR: ${e.message}`;
+            this.addToTimeline('Checkout error', 'error', { error: e.message }, 'Checkout');
         }
     },
     async checkBalance() {
@@ -259,59 +302,499 @@ const TestingComponent = {
             document.getElementById('test-balance-output').textContent = `ERROR: ${e.message}`;
         }
     },
-    async executeFlow() {
-        try {
-            const input = document.getElementById('test-input').value.trim();
-            const appId = document.getElementById('test_app_id')?.value || 'default';
-            const output = document.getElementById('test-output');
-            output.innerHTML = '<div class="loading loading-spinner loading-lg"></div>';
-            
-            const result = await API.post('/core/v1/ai/query', {
-                message: input,
-                app_id: appId
-            });
-            
-            output.innerHTML = `
-                <div class="card bg-base-100 shadow-xl">
-                    <div class="card-body">
-                        <h2 class="card-title">Response</h2>
-                        <p>${result.response || result.message || 'No response'}</p>
-                        ${result.credits_used ? `<p class="text-sm text-gray-500">Credits used: ${result.credits_used}</p>` : ''}
-                    </div>
-                </div>
-            `;
-            
-            this.addToTimeline('Flow executed', 'success', {
-                app_id: appId,
-                flow_key: flowKey,
-                elapsed_ms: elapsed,
-                credits_used: result.credits_used
-            });
-        } catch (error) {
-            const errorDetails = {
-                message: error.message,
-                status: error.status,
-                details: error.response || error
-            };
-            
-            output.innerHTML = `
-                <div class="alert alert-error">
-                    <i class="fas fa-times-circle"></i>
-                    <div>
-                        <h4 class="font-bold">Flow Execution Failed</h4>
-                        <p>${error.message}</p>
-                        ${error.status === 402 ? `
-                            <div class="mt-2 text-sm">
-                                <p>User has insufficient credits for this operation.</p>
-                                <p>Run an Affordability Check for details.</p>
-                            </div>
-                        ` : ''}
-                    </div>
-                </div>
-            `;
-            
-            this.addToTimeline('Flow failed', 'error', errorDetails);
+async executeFlow() {
+        const input = document.getElementById('test-input').value.trim();
+        const appId = document.getElementById('test_app_id')?.value || 'default';
+        const flowKey = document.getElementById('exec_flow_key')?.value;
+        const execUserSel = document.getElementById('exec_user_select');
+        const userId = execUserSel?.value;
+        const output = document.getElementById('test-output');
+
+        if (!flowKey) {
+            output.innerHTML = '<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> Seleziona un flow</div>';
+            return;
         }
+        if (!userId) {
+            output.innerHTML = '<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> Seleziona un utente</div>';
+            return;
+        }
+
+        try {
+            const authHeaders = { ...State.getAuthHeaders(), 'X-App-Id': appId };
+            
+            // Prepara payload
+            let userData;
+            try {
+                userData = input ? JSON.parse(input) : {};
+            } catch (_) {
+                userData = { input };
+            }
+            userData._as_user_id = userId;
+            const payload = { flow_key: flowKey, data: userData };
+
+            // Timeline iniziale
+            const timeline = [];
+            const addTimelineEvent = (event) => {
+                timeline.push({ time: new Date().toISOString(), event });
+                const tlEl = document.getElementById('exec-timeline');
+                if (tlEl) {
+                    tlEl.innerHTML = timeline.map(t => 
+                        `<div class="flex gap-2">
+                            <span class="opacity-60">${t.time.split('T')[1].split('.')[0]}</span>
+                            <span>${t.event}</span>
+                        </div>`
+                    ).join('');
+                }
+            };
+
+            addTimelineEvent('🚀 Inizio esecuzione flow');
+            const userEmail = execUserSel.options[execUserSel.selectedIndex]?.text || 'Unknown';
+            
+            // Leggi saldo iniziale utente (admin)
+            let balanceBefore = null;
+            try {
+                const prof = await API.get(`/core/v1/admin/user-credits?user_id=${encodeURIComponent(userId)}`);
+                balanceBefore = typeof prof?.profile?.credits === 'number' ? prof.profile.credits : null;
+                if (balanceBefore !== null) addTimelineEvent(`saldo iniziale: ${balanceBefore.toFixed(2)} cr`);
+            } catch (_) {}
+            
+            // Mostra stato iniziale
+            output.innerHTML = `
+                <div class="space-y-4">
+                    <!-- Timeline -->
+                    <div class="bg-base-200 p-4 rounded-lg">
+                        <h4 class="font-bold text-sm mb-2 flex items-center gap-2">
+                            <i class="fas fa-clock"></i> Timeline Esecuzione
+                        </h4>
+                        <div id="exec-timeline" class="text-xs space-y-1 font-mono"></div>
+                    </div>
+                    
+                    <!-- Loader -->
+                    <div class="alert alert-info">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <span>Controllo affordability e esecuzione flow...</span>
+                    </div>
+                </div>
+            `;
+            
+            addTimelineEvent('🔍 Controllo affordability pre-volo');
+            // Esegui affordability check (admin, impersonificando l'utente)
+            let affData = null; let affSec = null;
+            try {
+                const url = new URL(State.getBase() + '/core/v1/providers/flowise/affordability-check');
+                url.searchParams.set('as_user_id', userId);
+                if (flowKey) url.searchParams.set('flow_key', flowKey);
+                const affStart = performance.now();
+                const affResp = await fetch(url.toString(), { headers: authHeaders });
+                affSec = ((performance.now() - affStart) / 1000).toFixed(2);
+                if (affResp.ok) {
+                    affData = await affResp.json();
+                    addTimelineEvent(`${affSec}s affordability check -> ${affData.can_afford ? 'ok' : 'KO'}`);
+                    const req = typeof affData.required_credits === 'number' ? affData.required_credits : (affData.minimum_required || 0);
+                    addTimelineEvent(`${req.toFixed(2)} crediti richiesti -> ${(affData.available_credits || 0).toFixed(2)} disponibili`);
+                } else {
+                    const txt = await affResp.text();
+                    addTimelineEvent(`${affSec}s affordability check -> errore ${affResp.status}`);
+                    console.warn('Affordability error:', txt);
+                }
+            } catch (e) {
+                addTimelineEvent(`affordability check errore: ${e.message}`);
+            }
+
+            // Marker per step successivi
+            let lastMark = performance.now();
+            addTimelineEvent('📤 Invio richiesta a Flow Executor (payload)');
+            
+            const start = Date.now();
+            const execResp = await fetch(State.getBase() + '/core/v1/providers/flowise/execute', {
+                    method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...authHeaders },
+                body: JSON.stringify(payload)
+            });
+            
+            const elapsed = Date.now() - start;
+            const res = await execResp.json();
+            addTimelineEvent(`📥 Risposta AI in ${(elapsed/1000).toFixed(2)}s`);
+
+            if (execResp.ok) {
+                addTimelineEvent('✅ Flow completato con successo');
+                
+                // Estrai risultato principale
+                let mainResult = res.result;
+                if (typeof mainResult === 'object' && mainResult.text) {
+                    try {
+                        const parsed = JSON.parse(mainResult.text);
+                        mainResult = parsed.XPost || parsed;
+                    } catch (e) {
+                        // Keep as is
+                    }
+                }
+                // Se disponibile, mostra input grezzo ricevuto da Flowise (start node)
+                try {
+                    if (res.result && Array.isArray(res.result.agentFlowExecutedData)) {
+                        const startNode = res.result.agentFlowExecutedData.find(n => (n?.nodeLabel||'').toLowerCase() === 'start');
+                        const rawInput = startNode?.data?.input;
+                        if (rawInput && Object.keys(rawInput).length) {
+                            this.addToTimeline('Input consegnato al flow', 'info', rawInput, 'Flow');
+                        }
+                    }
+                } catch (_) {}
+
+                // Visualizzazione stellare
+                const affHtml = affData ? `
+                        <div class="bg-base-300 p-3 rounded">
+                            <h5 class="text-xs font-semibold mb-2 opacity-80">🧮 Affordability</h5>
+                            <div class="space-y-1 text-sm">
+                                <div class="flex justify-between"><span>Min Gate:</span><span class="font-mono">${(affData.minimum_required || 0).toFixed(2)} cr</span></div>
+                                ${typeof affData.estimated_credits === 'number' ? `<div class="flex justify-between"><span>Stimati per flow:</span><span class="font-mono">${affData.estimated_credits.toFixed(2)} cr</span></div>` : ''}
+                                ${typeof affData.required_credits === 'number' ? `<div class="flex justify-between font-semibold"><span>Richiesti (max):</span><span class="font-mono">${affData.required_credits.toFixed(2)} cr</span></div>` : ''}
+                                <div class="flex justify-between"><span>Disponibili:</span><span class="font-mono">${(affData.available_credits || 0).toFixed(2)} cr</span></div>
+                                <div class="flex justify-between font-bold"><span>Esito:</span><span class="${affData.can_afford ? 'text-success' : 'text-error'}">${affData.can_afford ? 'OK' : 'INSUFFICIENTI'}</span></div>
+                                ${affSec ? `<div class="text-xs opacity-70">Tempo: ${affSec}s</div>` : ''}
+                            </div>
+                        </div>
+                ` : '';
+                const reqSummary = affData ? (typeof affData.required_credits === 'number' ? affData.required_credits : (affData.minimum_required || 0)) : null;
+                const aiText = (res && res.result && typeof res.result.text === 'string') ? res.result.text : null;
+                const summaryHtml = `
+                        <div class="bg-base-200 p-3 rounded">
+                            <h4 class="font-bold text-sm mb-2 flex items-center gap-2"><i class="fas fa-list"></i> Recap</h4>
+                            <ul class="text-xs space-y-1">
+                                ${affSec ? `<li><strong>${affSec}s</strong> affordability -> ${affData?.can_afford ? 'OK' : 'KO'}</li>` : ''}
+                                ${affData ? `<li><strong>${(reqSummary||0).toFixed(2)} cr</strong> richiesti -> <strong>${(affData.available_credits||0).toFixed(2)} cr</strong> disponibili</li>` : ''}
+                                <li><strong>${(elapsed/1000).toFixed(2)}s</strong> risposta AI</li>
+                            </ul>
+                        </div>`;
+
+                output.innerHTML = `
+                    <div class="space-y-4">
+                        <!-- Header Success -->
+                        <div class="alert alert-success">
+                            <div class="flex items-center justify-between w-full">
+                                <div class="flex items-center gap-2">
+                                    <i class="fas fa-check-circle text-2xl"></i>
+                                    <div>
+                                        <h3 class="font-bold">Flow Eseguito con Successo</h3>
+                                        <p class="text-sm opacity-80">Completato in ${elapsed}ms</p>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-sm font-semibold">Utente: ${userEmail}</div>
+                                    <div class="text-xs opacity-80">Flow: ${flowKey}</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        ${summaryHtml}
+
+                        <!-- Timeline -->
+                        <div class="bg-base-200 p-4 rounded-lg">
+                            <h4 class="font-bold text-sm mb-2 flex items-center gap-2">
+                                <i class="fas fa-clock"></i> Timeline Esecuzione
+                            </h4>
+                            <div id="exec-timeline" class="text-xs space-y-1 font-mono">
+                                ${timeline.map(t => 
+                                    `<div class="flex gap-2">
+                                        <span class="opacity-60">${t.time.split('T')[1].split('.')[0]}</span>
+                                        <span>${t.event}</span>
+                                    </div>`
+                                ).join('')}
+                            </div>
+                        </div>
+
+                        <!-- 1. Payload Inviato -->
+                        <div class="bg-base-200 p-4 rounded-lg">
+                            <h4 class="font-bold text-sm mb-2 flex items-center gap-2">
+                                <i class="fas fa-upload text-primary"></i> Payload Inviato
+                            </h4>
+                            <pre class="bg-base-300 p-3 rounded text-xs overflow-auto max-h-48 whitespace-pre-wrap break-words">${JSON.stringify(payload, null, 2)}</pre>
+                        </div>
+
+                        <!-- 1b. AI Output (text) -->
+                        ${aiText ? `
+                        <div class="bg-base-200 p-4 rounded-lg">
+                            <h4 class="font-bold text-sm mb-2 flex items-center gap-2">
+                                <i class="fas fa-comment-dots text-success"></i> AI Output (text)
+                            </h4>
+                            <pre class="bg-base-100 p-3 rounded text-sm whitespace-pre-wrap">${aiText.replace(/</g,'&lt;')}</pre>
+                        </div>
+                        ` : ''}
+
+                        <!-- 2. Risultato Principale -->
+                        <div class="bg-base-200 p-4 rounded-lg">
+                            <h4 class="font-bold text-sm mb-2 flex items-center gap-2">
+                                <i class="fas fa-magic text-success"></i> Risultato AI
+                            </h4>
+                            <div class="bg-white text-black p-4 rounded shadow-inner overflow-auto" style="max-height: 420px;">
+                                ${typeof mainResult === 'string' ? 
+                                    `<p class="whitespace-pre-wrap">${mainResult}</p>` :
+                                    `<pre class="text-sm overflow-auto max-h-48 whitespace-pre-wrap break-words">${JSON.stringify(mainResult, null, 2)}</pre>`
+                                }
+                            </div>
+                        </div>
+
+                        <!-- 3. Pricing & Costs Breakdown -->
+                        ${res.pricing ? `
+                        <div class="bg-base-200 p-4 rounded-lg">
+                            <h4 class="font-bold text-sm mb-3 flex items-center gap-2">
+                                <i class="fas fa-calculator text-warning"></i> Breakdown Completo dei Costi
+                            </h4>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                ${affHtml}
+                                <!-- OpenRouter Raw Cost -->
+                                <div class="bg-base-300 p-3 rounded">
+                                    <h5 class="text-xs font-semibold mb-2 opacity-80">🤖 Costo OpenRouter (Raw)</h5>
+                                    <div class="space-y-1">
+                                        <div class="flex justify-between text-sm">
+                                            <span>Costo effettivo:</span>
+                                            <span class="font-mono font-bold" data-pricing-cost>$${res.pricing.actual_cost_usd?.toFixed(6) || '0.000000'}</span>
+                                        </div>
+                                        <div class="flex justify-between text-xs opacity-70">
+                                            <span>Usage prima:</span>
+                                            <span class="font-mono">$${res.pricing.usage_before_usd?.toFixed(6) || 'N/A'}</span>
+                                        </div>
+                                        <div class="flex justify-between text-xs opacity-70">
+                                            <span>Usage dopo:</span>
+                                            <span class="font-mono" data-pricing-after>$${res.pricing.usage_after_usd?.toFixed(6) || 'N/A'}</span>
+                                        </div>
+                                        ${res.pricing.status === 'pending' ? 
+                                            '<div class="text-xs text-warning mt-1" data-pricing-pending><i class="fas fa-clock"></i> Calcolo in corso...</div>' : 
+                                            ''
+                                        }
+                                    </div>
+                                </div>
+
+                                <!-- Business Multipliers -->
+                                <div class="bg-base-300 p-3 rounded">
+                                    <h5 class="text-xs font-semibold mb-2 opacity-80">📊 Moltiplicatori Business</h5>
+                                    <div class="space-y-1 text-sm">
+                                        <div class="flex justify-between">
+                                            <span>USD → Credits:</span>
+                                            <span class="font-mono">${res.pricing.usd_to_credits || 100}x</span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span>Overhead:</span>
+                                            <span class="font-mono">${res.pricing.overhead_multiplier || 1}x</span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span>Margine:</span>
+                                            <span class="font-mono">${res.pricing.margin_multiplier || 1}x</span>
+                                        </div>
+                                        <div class="flex justify-between font-bold">
+                                            <span>Totale:</span>
+                                            <span class="font-mono">${res.pricing.usd_multiplier || 1}x</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Prezzo Pubblico -->
+                                <div class="bg-base-300 p-3 rounded">
+                                    <h5 class="text-xs font-semibold mb-2 opacity-80">💵 Prezzo Cliente</h5>
+                                    <div class="space-y-1">
+                                        <div class="flex justify-between text-sm">
+                                            <span>Prezzo USD:</span>
+                                            <span class="font-mono font-bold" data-pricing-public>$${res.pricing.public_price_usd?.toFixed(4) || '0.0000'}</span>
+                                        </div>
+                                        <div class="flex justify-between text-sm">
+                                            <span>Crediti:</span>
+                                            <span class="font-mono font-bold text-warning" data-pricing-credits>${res.pricing.credits_to_debit?.toFixed(2) || '0.00'}</span>
+                                        </div>
+                                        <div class="flex justify-between text-xs opacity-70">
+                                            <span>Markup:</span>
+                                            <span class="font-mono" data-pricing-markup>+${res.pricing.markup_percent?.toFixed(0) || '0'}%</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Saldo Utente -->
+                                ${res.debit ? `
+                                <div class="bg-base-300 p-3 rounded">
+                                    <h5 class="text-xs font-semibold mb-2 opacity-80">👤 Saldo Utente</h5>
+                                    <div class="space-y-1">
+                                        <div class="flex justify-between text-sm">
+                                            <span>Prima:</span>
+                                            <span class="font-mono">${res.debit.balance_before?.toFixed(2) || 'N/A'}</span>
+                                        </div>
+                                        <div class="flex justify-between text-sm">
+                                            <span>Scalati:</span>
+                                            <span class="font-mono text-error">-${res.debit.amount?.toFixed(2) || '0.00'}</span>
+                                        </div>
+                                        <div class="flex justify-between text-sm font-bold">
+                                            <span>Dopo:</span>
+                                            <span class="font-mono ${res.debit.balance_after < 0 ? 'text-error' : 'text-success'}">${res.debit.balance_after?.toFixed(2) || 'N/A'}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                ` : ''}
+                            </div>
+
+                            <!-- Riepilogo Profitto -->
+                            ${res.pricing.actual_cost_usd && res.pricing.public_price_usd ? `
+                            <div class="mt-4 p-3 bg-success/20 border border-success/50 rounded">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-sm font-semibold">💰 Profitto per questa chiamata:</span>
+                                    <div class="text-right">
+                                        <div class="font-mono font-bold">
+                                            $${(res.pricing.public_price_usd - res.pricing.actual_cost_usd).toFixed(4)}
+                                        </div>
+                                        <div class="text-xs opacity-80">
+                                            (${((res.pricing.public_price_usd / res.pricing.actual_cost_usd - 1) * 100).toFixed(0)}% margin)
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            ` : ''}
+                        </div>
+                        ` : ''}
+
+                        <!-- 4. Raw Response (Collapsible) -->
+                        <details class="bg-base-200 p-4 rounded-lg">
+                            <summary class="cursor-pointer font-bold text-sm flex items-center gap-2">
+                                <i class="fas fa-code"></i> Risposta Completa (JSON)
+                            </summary>
+                            <pre class="bg-base-300 p-3 rounded text-xs mt-3 overflow-auto max-h-96 whitespace-pre-wrap break-words">${JSON.stringify(res, null, 2)}</pre>
+                        </details>
+                    </div>
+                `;
+
+                // Se pricing è pending, avvia polling
+                if (res.pricing?.status === 'pending' && res.pricing?.usage_before_usd !== undefined) {
+                    this.startPricingPolling(res.pricing.usage_before_usd, authHeaders, userId);
+                }
+                // Avvia polling saldo per vedere addebito
+                this.startBalancePolling(userId, balanceBefore);
+                
+                this.addToTimeline('Flow executed successfully', 'success', { elapsed_ms: elapsed }, 'Flow');
+
+                // Salva ultimo test
+                this._saveLastRun(payload, res, { timeline, balanceBefore, affData, elapsed_ms: elapsed });
+
+            } else {
+                addTimelineEvent('❌ Errore durante esecuzione');
+                output.innerHTML = `
+                    <div class="space-y-4">
+                        <!-- Header Error -->
+                        <div class="alert alert-error">
+                            <div class="flex items-center gap-2">
+                                <i class="fas fa-times-circle text-2xl"></i>
+                                <div>
+                                    <h3 class="font-bold">Errore Esecuzione Flow</h3>
+                                    <p class="text-sm">${res.detail || 'Errore sconosciuto'}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Timeline -->
+                        <div class="bg-base-200 p-4 rounded-lg">
+                            <h4 class="font-bold text-sm mb-2 flex items-center gap-2">
+                                <i class="fas fa-clock"></i> Timeline Esecuzione
+                            </h4>
+                            <div class="text-xs space-y-1 font-mono">
+                                ${timeline.map(t => 
+                                    `<div class="flex gap-2">
+                                        <span class="opacity-60">${t.time.split('T')[1].split('.')[0]}</span>
+                                        <span>${t.event}</span>
+                                    </div>`
+                                ).join('')}
+                            </div>
+                        </div>
+
+                        <!-- Error Details -->
+                        <div class="bg-base-200 p-4 rounded-lg">
+                            <h4 class="font-bold text-sm mb-2">Dettagli Errore</h4>
+                            <pre class="bg-error/20 text-error-content p-3 rounded text-xs overflow-auto max-h-48 whitespace-pre-wrap break-words">${JSON.stringify(res, null, 2)}</pre>
+                        </div>
+                    </div>
+                `;
+                
+                this.addToTimeline('Flow failed', 'error', res, 'Flow');
+            }
+            } catch (error) {
+            output.innerHTML = `
+                    <div class="alert alert-error">
+                    <i class="fas fa-times-circle"></i>
+                    <span>Errore di rete: ${error.message}</span>
+                    </div>
+                `;
+            }
+    },
+
+    // Helper per polling pricing updates
+    async startPricingPolling(usageBeforeUsd, authHeaders, userId) {
+        let attempts = 0;
+        const maxAttempts = 15;
+        const interval = 2000;
+
+        const pollTimer = setInterval(async () => {
+            attempts++;
+            try {
+                const resp = await fetch(
+                    State.getBase() + `/core/v1/providers/flowise/pricing?usage_before_usd=${encodeURIComponent(usageBeforeUsd)}&as_user_id=${encodeURIComponent(userId)}`,
+                    { headers: authHeaders }
+                );
+                
+                if (resp.ok) {
+                    const pricing = await resp.json();
+                    if (pricing.status === 'ready') {
+                        // Aggiorna i valori nel DOM
+                        const costEl = document.querySelector('[data-pricing-cost]');
+                        const afterEl = document.querySelector('[data-pricing-after]');
+                        const pendingEl = document.querySelector('[data-pricing-pending]');
+                        const publicEl = document.querySelector('[data-pricing-public]');
+                        const creditsEl = document.querySelector('[data-pricing-credits]');
+                        const markupEl = document.querySelector('[data-pricing-markup]');
+
+                        if (costEl) costEl.textContent = `$${pricing.actual_cost_usd?.toFixed(6) || '0.000000'}`;
+                        if (afterEl) afterEl.textContent = `$${pricing.usage_after_usd?.toFixed(6) || 'N/A'}`;
+                        if (pendingEl) pendingEl.remove();
+                        // Calcoli con fallback se alcuni campi non sono presenti
+                        const actualUsd = typeof pricing.actual_cost_usd === 'number' ? pricing.actual_cost_usd : 0;
+                        const usdMult = typeof pricing.usd_multiplier === 'number' ? pricing.usd_multiplier : (typeof pricing.total_multiplier_percent === 'number' ? pricing.total_multiplier_percent/100 : null);
+                        const publicUsd = typeof pricing.public_price_usd === 'number' ? pricing.public_price_usd : (usdMult ? actualUsd * usdMult : null);
+                        const credits = typeof pricing.credits_to_debit === 'number' ? pricing.credits_to_debit : (typeof pricing.actual_cost_credits === 'number' ? pricing.actual_cost_credits : (typeof pricing.final_credit_multiplier === 'number' ? actualUsd * pricing.final_credit_multiplier : null));
+                        const markup = typeof pricing.markup_percent === 'number' ? pricing.markup_percent : (usdMult ? (usdMult - 1) * 100 : null);
+
+                        if (publicEl) publicEl.textContent = `$${(publicUsd ?? 0).toFixed(4)}`;
+                        if (creditsEl) creditsEl.textContent = `${(credits ?? 0).toFixed(2)}`;
+                        if (markupEl) markupEl.textContent = `+${(markup ?? 0).toFixed(0)}%`;
+
+                        try { console.debug('pricing ready', {actualUsd, usdMult, publicUsd, credits, markup, pricing}); } catch(_) {}
+
+                        clearInterval(pollTimer);
+                    }
+                }
+            } catch (e) {
+                console.error('Pricing poll error:', e);
+            }
+
+            if (attempts >= maxAttempts) {
+                clearInterval(pollTimer);
+            }
+        }, interval);
+    },
+
+    // Polling saldo per mostrare addebito su async
+    async startBalancePolling(userId, balanceBefore) {
+        if (balanceBefore === null) return;
+        let attempts = 0;
+        const maxAttempts = 20;
+        const interval = 2000;
+        const balanceEl = document.querySelector('[data-balance-after]');
+        const debitEl = document.querySelector('[data-debit-amount]');
+        const timer = setInterval(async () => {
+            attempts++;
+            try {
+                const prof = await API.get(`/core/v1/admin/user-credits?user_id=${encodeURIComponent(userId)}`);
+                const after = typeof prof?.profile?.credits === 'number' ? prof.profile.credits : null;
+                if (after !== null && balanceEl) balanceEl.textContent = after.toFixed(2);
+                if (after !== null && debitEl && balanceBefore !== null) {
+                    const delta = (balanceBefore - after);
+                    if (delta > 0) debitEl.textContent = `-${delta.toFixed(2)} cr`;
+                }
+            } catch (_) {}
+            if (attempts >= maxAttempts) clearInterval(timer);
+        }, interval);
     },
     
     async testProvider() {
@@ -343,7 +826,7 @@ const TestingComponent = {
             status.classList.add('badge-success');
             status.textContent = 'Connected';
             
-            this.addToTimeline('Provider test', 'success', details);
+            this.addToTimeline('Provider test', 'success', details, 'Provider');
         } catch (e) {
             const details = {
                 status: 'ERROR',
@@ -360,43 +843,12 @@ const TestingComponent = {
             status.classList.add('badge-error');
             status.textContent = 'Failed';
             
-            this.addToTimeline('Provider test', 'error', details);
+            this.addToTimeline('Provider test', 'error', details, 'Provider');
         }
     },
     
-    addToTimeline(action, status, details) {
-        const timeline = document.getElementById('test-timeline');
-        if (!timeline) return;
-        
-        // Remove initial placeholder
-        if (timeline.querySelector('.text-base-content\\/60')) {
-            timeline.innerHTML = '';
+    addToTimeline(action, status, details, category) {
+        // Timeline rimossa - funzione disabilitata
+        return;
         }
-        
-        const timestamp = new Date().toLocaleTimeString();
-        const badgeClass = {
-            success: 'badge-success',
-            error: 'badge-error',
-            warning: 'badge-warning',
-            info: 'badge-info'
-        }[status] || 'badge-ghost';
-        
-        const entry = document.createElement('div');
-        entry.className = 'flex items-start gap-3 p-2 rounded hover:bg-base-200';
-        entry.innerHTML = `
-            <span class="text-xs text-base-content/60">${timestamp}</span>
-            <span class="badge badge-sm ${badgeClass}">${status}</span>
-            <div class="flex-1">
-                <p class="text-sm font-semibold">${action}</p>
-                ${details ? `<pre class="text-xs mt-1 text-base-content/60">${JSON.stringify(details, null, 2)}</pre>` : ''}
-            </div>
-        `;
-        
-        timeline.insertBefore(entry, timeline.firstChild);
-        
-        // Keep only last 10 entries
-        while (timeline.children.length > 10) {
-            timeline.removeChild(timeline.lastChild);
-        }
-    }
 };

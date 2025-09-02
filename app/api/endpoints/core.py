@@ -51,33 +51,60 @@ def get_usage_service() -> OpenRouterUsageService:
 @router.get("/providers/flowise/affordability-check")
 async def flowise_affordability_check(
     Authorization: Optional[str] = Header(default=None),
+    X_Admin_Key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
     X_App_Id: Optional[str] = Header(default=None, alias="X-App-Id"),
     flow_id: Optional[str] = Query(default=None),
     flow_key: Optional[str] = Query(default=None),
+    as_user_id: Optional[str] = Query(default=None, alias="as_user_id"),
 ) -> Dict[str, Any]:
     """Diagnostica: esegue SOLO il pre-check di affordability per-app, senza provisioning o chiamate a Flowise.
 
     Ritorna i valori usati per il gate: app_id, threshold, available e il risultato.
     """
-    if not Authorization:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
-    token = Authorization.replace("Bearer ", "")
-    user = await auth_backend.get_current_user(token)
+    core_admin_key = os.environ.get("CORE_ADMIN_KEY")
+    if X_Admin_Key and core_admin_key and X_Admin_Key == core_admin_key:
+        if not as_user_id:
+            raise HTTPException(status_code=400, detail="as_user_id richiesto con X-Admin-Key")
+        user_id = as_user_id
+    else:
+        if not Authorization:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
+        token = Authorization.replace("Bearer ", "")
+        user = await auth_backend.get_current_user(token)
+        user_id = user["id"]
 
     app_id_for_threshold = X_App_Id or os.environ.get("CORE_APP_ID", "default")
-    # Carica config da Supabase (default-first) per diagnosi accurata
+    # Carica config e calcola sia soglia per-app sia stima costi del flow
     try:
         await pricing._load_from_supabase_async(app_id_for_threshold)
     except Exception:
         pass
-    per_app_map = getattr(pricing.config, "minimum_affordability_per_app", {}) or {}
-    min_gate = float(per_app_map.get(app_id_for_threshold, 0.0) or 0.0)
-    available = await credits_ledger.get_balance(user["id"])
-    can_afford = available >= min_gate
+    # Fonte primaria per affordability per-app: flow_costs_usd; fallback legacy a minimum_affordability_per_app
+    flow_map = getattr(pricing.config, "flow_costs_usd", {}) or {}
+    legacy_map = getattr(pricing.config, "minimum_affordability_per_app", {}) or {}
+    min_gate = 0.0
+    if app_id_for_threshold in flow_map:
+        try:
+            min_gate = float(flow_map.get(app_id_for_threshold) or 0.0)
+        except Exception:
+            min_gate = 0.0
+    elif app_id_for_threshold in legacy_map:
+        try:
+            min_gate = float(legacy_map.get(app_id_for_threshold) or 0.0)
+        except Exception:
+            min_gate = 0.0
+
+    # Stima crediti richiesti per il flow specifico
+    estimated = float(pricing.calculate_operation_cost_credits("flowise_execute", {"flow_key": flow_key, "flow_id": flow_id}))
+    required = max(min_gate, estimated)
+    available = await credits_ledger.get_balance(user_id)
+    can_afford = available >= required
 
     return {
         "app_id": app_id_for_threshold,
         "minimum_required": min_gate,
+        "estimated_credits": estimated,
+        "required_credits": required,
         "available_credits": available,
         "can_afford": can_afford,
         "flow_key": flow_key,
@@ -141,18 +168,29 @@ class FlowiseRequest(BaseModel):
 async def flowise_execute(
     payload: FlowiseRequest,
     Authorization: Optional[str] = Header(default=None),
+    X_Admin_Key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
     X_App_Id: Optional[str] = Header(default=None, alias="X-App-Id"),
     Idempotency_Key: Optional[str] = Header(default=None, alias="Idempotency-Key")
 ) -> Dict[str, Any]:
-    if not Authorization:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
-    token = Authorization.replace("Bearer ", "")
-    user = await auth_backend.get_current_user(token)
+    # Supporto admin: se X-Admin-Key è valido, consente impersonificazione via _as_user_id senza Authorization
+    core_admin_key = os.environ.get("CORE_ADMIN_KEY")
+    user_id: Optional[str] = None
+    if X_Admin_Key and core_admin_key and X_Admin_Key == core_admin_key:
+        # Impersonificazione: richiede _as_user_id nel payload.data
+        if not isinstance(payload.data, dict) or not payload.data.get("_as_user_id"):
+            raise HTTPException(status_code=400, detail="_as_user_id richiesto per esecuzione admin")
+        user_id = str(payload.data.get("_as_user_id"))
+    else:
+        if not Authorization:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
+        token = Authorization.replace("Bearer ", "")
+        user = await auth_backend.get_current_user(token)
+        user_id = user["id"]
 
     flow_id = payload.flow_id
     if not flow_id and payload.flow_key:
         from app.services.flowise_config_service import FlowiseConfigService
-        cfg = await FlowiseConfigService().get_config_for_user(user["id"], payload.flow_key, app_id=X_App_Id)
+        cfg = await FlowiseConfigService().get_config_for_user(user_id, payload.flow_key, app_id=X_App_Id)
         if not cfg:
             raise HTTPException(status_code=404, detail=f"flow_config non trovata per app_id={X_App_Id or ''} flow_key={payload.flow_key}")
         flow_id = cfg.get("flow_id")
@@ -183,7 +221,7 @@ async def flowise_execute(
         min_gate = float(primary_map.get(app_id_for_threshold, 0.0) or 0.0)
         logging.warning(f"🔍 PCHECK: keys={list(primary_map.keys())} app={app_id_for_threshold} threshold={min_gate}")
         required = float(min_gate)
-        available = await credits_ledger.get_balance(user["id"])
+        available = await credits_ledger.get_balance(user_id)
         logging.warning(f"🔍 PCHECK: app={app_id_for_threshold} threshold={min_gate} available={available} required={required}")
         
         if available < required:
@@ -212,12 +250,12 @@ async def flowise_execute(
         # Non bloccare se il pre-check fallisce, ma logga l'errore
 
     # Usage prima/dopo obbligatorio (no fallback)
-    user_api_key = await get_user_keys_service().get_user_api_key(user["id"])
+    user_api_key = await get_user_keys_service().get_user_api_key(user_id)
     usage_before = await get_usage_service().get_usage_usd(user_api_key)
 
     try:
         result, usage = await flowise.execute(
-            user_id=user["id"], 
+            user_id=user_id, 
             flow_id=flow_id, 
             data=data_for_adapter
         )
@@ -247,7 +285,7 @@ async def flowise_execute(
             if actual_credits <= 0:
                 return
             await credits_ledger.debit(
-                user_id=user["id"],
+                user_id=user_id,
                 amount=actual_credits,
                 reason="flowise_execute",
                 idempotency_key=Idempotency_Key,
@@ -292,7 +330,7 @@ async def flowise_execute(
         markup_percent = round((usd_multiplier - 1.0) * 100.0, 3)
         try:
             debit_details = await credits_ledger.debit(
-                user_id=user["id"], 
+                user_id=user_id, 
                 amount=actual_cost_credits, 
                 reason="flowise_execute", 
                 idempotency_key=Idempotency_Key
@@ -324,19 +362,28 @@ async def flowise_execute(
 @router.get("/providers/flowise/pricing")
 async def flowise_pricing(
     Authorization: Optional[str] = Header(default=None),
-    usage_before_usd: Optional[float] = Query(default=None)
+    X_Admin_Key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
+    usage_before_usd: Optional[float] = Query(default=None),
+    as_user_id: Optional[str] = Query(default=None, alias="as_user_id")
 ) -> Dict[str, Any]:
     """Rileva il costo reale OpenRouter (delta) senza addebitare.
 
     Args:
         usage_before_usd: opzionale; se fornito, usato come baseline per il delta.
     """
-    if not Authorization:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
-    token = Authorization.replace("Bearer ", "")
-    user = await auth_backend.get_current_user(token)
+    core_admin_key = os.environ.get("CORE_ADMIN_KEY")
+    if X_Admin_Key and core_admin_key and X_Admin_Key == core_admin_key:
+        if not as_user_id:
+            raise HTTPException(status_code=400, detail="as_user_id richiesto con X-Admin-Key")
+        user_id = as_user_id
+    else:
+        if not Authorization:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
+        token = Authorization.replace("Bearer ", "")
+        user = await auth_backend.get_current_user(token)
+        user_id = user["id"]
 
-    user_api_key = await get_user_keys_service().get_user_api_key(user["id"])
+    user_api_key = await get_user_keys_service().get_user_api_key(user_id)
     # Se non fornito, leggi la baseline adesso
     if usage_before_usd is None:
         usage_before_usd = await get_usage_service().get_usage_usd(user_api_key)
