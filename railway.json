@@ -8,7 +8,6 @@
       "build": {
         "builder": "NIXPACKS"
       },
-      "startCommand": "python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT",
       "healthcheckPath": "/health",
       "variables": {
         "CORE_APP_ID": "default",
