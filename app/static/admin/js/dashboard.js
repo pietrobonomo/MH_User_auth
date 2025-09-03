@@ -406,6 +406,10 @@ document.addEventListener('DOMContentLoaded', () => {
     window.ObservabilityComponent = ObservabilityComponent;
     window.ConfigurationComponent = ConfigurationComponent;
     window.TestingComponent = TestingComponent;
+    // Shim per onclick nei template: upsertFlowConfig()
+    if (!window.upsertFlowConfig) {
+        window.upsertFlowConfig = () => ConfigurationComponent.upsertFlowConfig();
+    }
     
     // Bind guides functions to window
     window.showExampleTab = function(tab) {
