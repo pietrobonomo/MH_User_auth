@@ -54,10 +54,11 @@ const TestingComponent = {
                 execUser.onchange();
             }
 
-            // Plans
-            const plans = await API.get('/core/v1/billing/plans');
+            // Plans dalla config unificata
+            const billingConfig = await API.get('/core/v1/admin/billing/config');
+            const plans = (billingConfig.config && billingConfig.config.plans) ? billingConfig.config.plans : [];
             const planSelect = document.getElementById('test_checkout_plan');
-            if (planSelect) planSelect.innerHTML = (plans.plans || []).map(p => `<option value="${p.id}">${p.name} ($${p.price_usd})</option>`).join('');
+            if (planSelect) planSelect.innerHTML = plans.map(p => `<option value="${p.id}">${p.name} ($${p.price_usd})</option>`).join('');
 
             // Affordability app select
             const affApp = document.getElementById('aff_app_select');
