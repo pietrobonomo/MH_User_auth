@@ -1422,6 +1422,7 @@ window.pageTemplates = {
                     <!-- Navigation Tabs -->
                     <div class="tabs tabs-boxed mb-6">
                         <a href="#" class="tab tab-active" data-tab="api-reference">API Reference</a>
+                        <a href="#" class="tab" data-tab="auth">Auth</a>
                         <a href="#" class="tab" data-tab="development-guide">Development Guide</a>
                         <a href="#" class="tab" data-tab="architecture">Architecture</a>
                         <a href="#" class="tab" data-tab="examples">Examples</a>
@@ -2068,6 +2069,43 @@ Content-Type: application/json</pre>
                                                 </div>
                                             </div>
                                         </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Auth Tab -->
+                    <div id="tab-auth" class="tab-content">
+                        <div class="card bg-base-100 shadow-xl">
+                            <div class="card-body">
+                                <h2 class="card-title text-primary"><i class="fas fa-user-shield"></i> Auth (Supabase)</h2>
+                                <p class="text-sm">Flow Starter espone proxy semplici per Supabase Auth, utili per gli sviluppatori di app.</p>
+                                <div class="mt-4 space-y-4">
+                                    <div>
+<pre class="bg-base-300 p-2 rounded text-sm">POST /core/v1/auth/signup
+Body: { "email": "user@example.com", "password": "Passw0rd!", "redirect_to": "https://app.com/welcome" }</pre>
+                                    </div>
+                                    <div>
+<pre class="bg-base-300 p-2 rounded text-sm">POST /core/v1/auth/login
+Body: { "email": "user@example.com", "password": "Passw0rd!" }
+→ { access_token, refresh_token, expires_in, ... }</pre>
+                                    </div>
+                                    <div>
+<pre class="bg-base-300 p-2 rounded text-sm">POST /core/v1/auth/refresh
+Body: { "refresh_token": "..." }</pre>
+                                    </div>
+                                    <div>
+<pre class="bg-base-300 p-2 rounded text-sm">POST /core/v1/auth/logout
+Headers: Authorization: Bearer &lt;access_token&gt;</pre>
+                                    </div>
+                                    <div>
+<pre class="bg-base-300 p-2 rounded text-sm">GET /core/v1/auth/user
+Headers: Authorization: Bearer &lt;access_token&gt;</pre>
+                                    </div>
+                                    <div class="alert alert-info">
+                                        <i class="fas fa-info-circle"></i>
+                                        <div class="text-sm">Config richieste sul Core: <code>SUPABASE_URL</code> e <code>SUPABASE_ANON_KEY</code>. Nel client skeleton trovi gli helper: <code>loginAuth</code>, <code>signupAuth</code>, <code>logoutAuth</code>, <code>getUserAuth</code>.</div>
                                     </div>
                                 </div>
                             </div>

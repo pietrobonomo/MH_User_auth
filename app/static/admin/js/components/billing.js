@@ -7,42 +7,15 @@ const BillingComponent = {
      */
     async loadPlansData() {
         try {
-            // Prima prova a caricare dalla configurazione billing
+            // Carica SOLO dalla configurazione billing unificata
             let plans = [];
-            try {
-                const billingConfig = await API.get('/core/v1/admin/billing/config');
-                if (billingConfig.config && billingConfig.config.plans) {
-                    plans = billingConfig.config.plans;
-                }
-            } catch (configError) {
-                console.log('No billing config found, trying plans endpoint');
-            }
-            
-            // Se non ci sono piani nella config, prova l'endpoint plans
-            if (plans.length === 0) {
-                try {
-                    const plansResp = await API.get('/core/v1/billing/plans');
-                    plans = plansResp.plans || plansResp || [];
-                } catch (plansError) {
-                    console.log('No plans found from plans endpoint');
-                }
-            }
+            const billingConfig = await API.get('/core/v1/admin/billing/config');
+            plans = (billingConfig.config && billingConfig.config.plans) ? billingConfig.config.plans : [];
             
             const container = document.getElementById('plans-container');
             if (container) {
                 container.innerHTML = '';
-                if (plans.length === 0) {
-                    // Aggiungi alcuni piani di default
-                    const defaultPlans = [
-                        { id: 'starter', name: 'Starter', type: 'subscription', price_usd: 9.99, credits_per_month: 1000 },
-                        { id: 'pro', name: 'Professional', type: 'subscription', price_usd: 29.99, credits_per_month: 5000 },
-                        { id: 'enterprise', name: 'Enterprise', type: 'subscription', price_usd: 99.99, credits_per_month: 20000 }
-                    ];
-                    defaultPlans.forEach(plan => this.addPlanCard(plan));
-                    Utils.showToast('Loaded default plans - click Save to persist', 'info');
-                } else {
-                    plans.forEach(plan => this.addPlanCard(plan));
-                }
+                plans.forEach(plan => this.addPlanCard(plan));
             }
         } catch (error) {
             console.error('Failed to load plans data:', error);
@@ -408,9 +381,8 @@ const BillingComponent = {
             const testModeInput = document.getElementById('ls_test_mode');
             if (testModeInput) testModeInput.checked = !!ls.test_mode;
             
-            // Carica mapping varianti
-            const plansResp = await API.get('/core/v1/billing/plans');
-            const plans = plansResp.plans || plansResp || [];
+            // Carica mapping varianti dai piani della config unificata
+            const plans = (config.plans || []);
             const variantMap = (ls.variant_map || {});
             const tbody = document.getElementById('variant-map-table');
             
@@ -470,11 +442,12 @@ const BillingComponent = {
      */
     async saveBillingProviderConfig() {
         try {
+            // Costruisci la mappa SOLO per valori non vuoti
             const variantMap = {};
             document.querySelectorAll('#variant-map-table tr').forEach(tr => {
                 const planId = tr.querySelector('[data-field="plan_id"]').textContent.trim();
                 const variant = tr.querySelector('input[data-field="variant_id"]').value.trim();
-                if (planId) variantMap[planId] = variant || '';
+                if (planId && variant) variantMap[planId] = variant;
             });
 
             // 1) Carica configurazione esistente per evitare overwrite
@@ -482,15 +455,17 @@ const BillingComponent = {
             const base = existing.config || {};
 
             // 2) Applica provider e sotto-config a livello TOP-LEVEL (no nested config)
+            const lsBlock = {
+                ...(base.lemonsqueezy || {}),
+                store_id: document.getElementById('ls_store').value.trim(),
+                test_mode: document.getElementById('ls_test_mode').checked,
+                ...(Object.keys(variantMap).length > 0 ? { variant_map: variantMap } : {})
+            };
+
             const updated = {
                 ...base,
                 provider: 'lemonsqueezy',
-                lemonsqueezy: {
-                    ...(base.lemonsqueezy || {}),
-                    store_id: document.getElementById('ls_store').value.trim(),
-                    test_mode: document.getElementById('ls_test_mode').checked,
-                    variant_map: variantMap
-                }
+                lemonsqueezy: lsBlock
             };
 
             // 3) Salva
@@ -658,9 +633,9 @@ const BillingComponent = {
                 });
             }
             
-            // Carica piani
-            const plansResp = await API.get('/core/v1/billing/plans');
-            const plans = plansResp.plans || plansResp || [];
+            // Carica piani dalla config unificata
+            const billingConfig = await API.get('/core/v1/admin/billing/config');
+            const plans = (billingConfig.config && billingConfig.config.plans) ? billingConfig.config.plans : [];
             const planSelect = document.getElementById('checkout_plan');
             if (planSelect) {
                 planSelect.innerHTML = '<option value="">-- Select Plan --</option>';

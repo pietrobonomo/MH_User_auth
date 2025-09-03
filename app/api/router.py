@@ -7,9 +7,11 @@ from app.api.endpoints.examples import router as examples_router
 from app.api.endpoints.pricing import router as pricing_router
 from app.api.endpoints.billing import router as billing_router
 from app.api.endpoints.setup_wizard import router as setup_router
+from app.api.endpoints.auth_proxy import router as auth_router
 
 api_router = APIRouter()
 api_router.include_router(setup_router, prefix="/setup", tags=["setup"])  # /core/v1/setup/...
+api_router.include_router(auth_router, prefix="/auth", tags=["auth"])  # /core/v1/auth/...
 api_router.include_router(core_router, tags=["core"])
 api_router.include_router(admin_router, prefix="/admin", tags=["admin"])  # Include billing config endpoints
 api_router.include_router(users_admin_router, prefix="/admin", tags=["users"])  # /core/v1/admin/users
