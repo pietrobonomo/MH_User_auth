@@ -75,8 +75,12 @@ class FlowiseAdapter:
             return ({"text": f"[stub] Flowise eseguito: {flow_id}", "data": data}, {"cost_credits": None})
 
         headers = {
+            # Alcune versioni/config di Flowise richiedono 'Authorization: Bearer', altre 'x-api-key'.
+            # Inviamo entrambi per massima compatibilità.
             "Authorization": f"Bearer {api_key}",
+            "x-api-key": api_key,
             "Content-Type": "application/json",
+            "Accept": "application/json",
         }
         
         # Ottieni chiave utente e nodi
