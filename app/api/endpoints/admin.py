@@ -83,6 +83,76 @@ async def get_flow_config(
             return {"found": False}
     row = data[0]
     return {"found": True, "config": row}
+@router.get("/flow-configs/all")
+async def list_flow_configs(
+    app_id: str = "*",
+    Authorization: Optional[str] = Header(default=None),
+    X_Admin_Key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
+) -> Dict[str, Any]:
+    """Elenca tutte le mapping flow per una app o tutte se app_id=*."""
+    core_admin_key = os.environ.get("CORE_ADMIN_KEY")
+    if X_Admin_Key and core_admin_key and X_Admin_Key == core_admin_key:
+        pass
+    else:
+        if not Authorization:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
+        token = Authorization.replace("Bearer ", "")
+        _ = await auth_backend.get_current_user(token)
+
+    supabase_url = os.environ.get("SUPABASE_URL")
+    service_key = os.environ.get("SUPABASE_SERVICE_KEY")
+    if not supabase_url or not service_key:
+        raise HTTPException(status_code=500, detail="Supabase non configurato")
+
+    headers = {
+        "apikey": service_key,
+        "Authorization": f"Bearer {service_key}",
+        "Accept": "application/json",
+    }
+    async with httpx.AsyncClient(timeout=10) as client:
+        if app_id == "*":
+            url = f"{supabase_url}/rest/v1/flow_configs?select=app_id,flow_key,flow_id,node_names,created_at&order=app_id,flow_key"
+        else:
+            url = f"{supabase_url}/rest/v1/flow_configs?app_id=eq.{app_id}&select=app_id,flow_key,flow_id,node_names,created_at&order=flow_key"
+        resp = await client.get(url, headers=headers)
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        rows = resp.json() or []
+    return {"items": rows}
+
+
+@router.delete("/flow-configs")
+async def delete_flow_config(
+    app_id: str,
+    flow_key: str,
+    Authorization: Optional[str] = Header(default=None),
+    X_Admin_Key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
+) -> Dict[str, Any]:
+    core_admin_key = os.environ.get("CORE_ADMIN_KEY")
+    if X_Admin_Key and core_admin_key and X_Admin_Key == core_admin_key:
+        pass
+    else:
+        if not Authorization:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mancante")
+        token = Authorization.replace("Bearer ", "")
+        _ = await auth_backend.get_current_user(token)
+
+    supabase_url = os.environ.get("SUPABASE_URL")
+    service_key = os.environ.get("SUPABASE_SERVICE_KEY")
+    if not supabase_url or not service_key:
+        raise HTTPException(status_code=500, detail="Supabase non configurato")
+
+    headers = {
+        "apikey": service_key,
+        "Authorization": f"Bearer {service_key}",
+        "Accept": "application/json",
+    }
+    async with httpx.AsyncClient(timeout=10) as client:
+        url = f"{supabase_url}/rest/v1/flow_configs?app_id=eq.{app_id}&flow_key=eq.{flow_key}"
+        resp = await client.delete(url, headers=headers)
+        if resp.status_code not in (200, 204):
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    return {"status": "deleted"}
 
 
 @router.get("/flow-keys")

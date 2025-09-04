@@ -6,6 +6,14 @@ Questo documento spiega all'agente AI come integrare un'app client con Flow Star
 - `NEXT_PUBLIC_FLOW_STARTER_API` deve puntare a `https://<core-domain>/core/v1` (senza `/` finale).
 - L'app userà token JWT di Supabase per autenticare l'utente verso il Core.
 
+Prod/Stage su Railway
+- Imposta nell'app client:
+  ```env
+  NEXT_PUBLIC_FLOW_STARTER_API="https://<flow_starter>.up.railway.app/core/v1"
+  ```
+- Non serve conoscere Flowise interno: il Core su Railway parla a Flowise via rete privata.
+- Se sviluppi in locale contro il Core remoto, assicurati che sul Core sia configurato `CORE_CORS_ORIGIN` con il tuo origin (es. `http://127.0.0.1:5173`).
+
 ### 2) Auth (via Supabase – proxy del Core)
 Usare gli endpoint proxy del Core (o lo skeleton JS già pronto):
 - POST `/auth/signup` `{ email, password, redirect_to? }`

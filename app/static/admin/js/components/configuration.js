@@ -2,20 +2,150 @@
  * Componente Configuration
  */
 const ConfigurationComponent = {
-async upsertFlowConfig() {
+async loadFlowMappings() {
+            try {
+                const container = document.getElementById('flow-mappings-container');
+                if (!container) return;
+                
+                // Ottieni tutte le mappings da Supabase
+                const allFlows = await API.get('/core/v1/admin/flow-configs/all?app_id=*');
+                const flows = allFlows?.items || [];
+                
+                if (flows.length === 0) {
+                    container.innerHTML = '<div class="alert alert-info">Nessuna mapping trovata nel database.</div>';
+                    return;
+                }
+                
+                // Raggruppa per app_id
+                const byApp = {};
+                flows.forEach(f => {
+                    if (!byApp[f.app_id]) byApp[f.app_id] = [];
+                    byApp[f.app_id].push(f);
+                });
+                
+                // Genera accordion per ogni app
+                const html = Object.keys(byApp).sort().map(appId => {
+                    const appFlows = byApp[appId];
+                    return `
+                        <div class="collapse collapse-arrow bg-base-100 border">
+                            <input type="checkbox" />
+                            <div class="collapse-title text-lg font-medium">
+                                <i class="fas fa-project-diagram mr-2"></i>
+                                ${appId} <span class="badge badge-ghost">${appFlows.length} flows</span>
+                            </div>
+                            <div class="collapse-content">
+                                <div class="overflow-x-auto">
+                                    <table class="table table-sm w-full">
+                                        <thead>
+                                            <tr>
+                                                <th>Flow Key</th>
+                                                <th>Flow ID</th>
+                                                <th>Node Names</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${appFlows.map(f => {
+                                                const nodes = Array.isArray(f.node_names) ? f.node_names.join(',') : '';
+                                                return `
+                                                    <tr>
+                                                        <td><strong>${f.flow_key}</strong></td>
+                                                        <td><code class="text-xs">${f.flow_id}</code></td>
+                                                        <td><span class="text-xs opacity-70">${nodes}</span></td>
+                                                        <td>
+                                                            <button class="btn btn-xs btn-primary mr-1" 
+                                                                onclick="ConfigurationComponent.editFlowMapping('${f.app_id}','${f.flow_key}','${f.flow_id}','${nodes}')">
+                                                                Edit
+                                                            </button>
+                                                            <button class="btn btn-xs btn-error" 
+                                                                onclick="ConfigurationComponent.deleteFlowMapping('${f.app_id}','${f.flow_key}')">
+                                                                Delete
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                `;
+                                            }).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                
+                container.innerHTML = html;
+            } catch (e) {
+                console.warn('loadFlowMappings error', e);
+                const container = document.getElementById('flow-mappings-container');
+                if (container) container.innerHTML = `<div class="alert alert-error">Errore caricamento: ${e.message}</div>`;
+            }
+        },
+        editFlowMapping(appId, flowKey, flowId, nodeNames) {
+            const appField = document.getElementById('new_flow_app_id');
+            const fk = document.getElementById('new_flow_key');
+            const fid = document.getElementById('new_flow_id');
+            const nn = document.getElementById('new_node_names');
+            if (appField) appField.value = appId;
+            if (fk) fk.value = flowKey;
+            if (fid) fid.value = flowId;
+            if (nn) nn.value = nodeNames;
+        },
+        async deleteFlowMapping(appId, flowKey) {
+            if (!flowKey) return;
+            if (!confirm(`Eliminare la mapping '${appId}/${flowKey}'?`)) return;
+            try {
+                await API.delete(`/core/v1/admin/flow-configs?app_id=${encodeURIComponent(appId)}&flow_key=${encodeURIComponent(flowKey)}`);
+                Utils.showToast('Mapping eliminata', 'success');
+                setTimeout(() => this.loadFlowMappings(), 300);
+            } catch (e) {
+                Utils.showToast('Eliminazione fallita: ' + (e.message||'Error'), 'error');
+            }
+        },
+        async populateAppIds() {
+            try {
+                // prendi lista app_id distinte da Supabase
+                const resp = await API.get('/core/v1/admin/app-ids');
+                const apps = (resp.app_ids || []).sort();
+                const sel = document.getElementById('flow_app_id_select');
+                const hidden = document.getElementById('flow_app_id');
+                if (!sel || !hidden) return;
+                sel.innerHTML = apps.map(a => `<option value="${a}">${a}</option>`).join('');
+                const current = hidden.value || apps[0] || 'default';
+                sel.value = current;
+                hidden.value = current;
+                sel.onchange = () => {
+                    hidden.value = sel.value;
+                    ConfigurationComponent.loadFlowMappings();
+                };
+            } catch (e) { console.warn('populateAppIds error', e); }
+        },
+async addNewFlowMapping() {
             try {
                 const config = {
-                    app_id: document.getElementById('flow_app_id').value.trim() || 'default',
-                    flow_key: document.getElementById('flow_key').value.trim(),
-                    flow_id: document.getElementById('flow_id').value.trim(),
-                    node_names: document.getElementById('node_names').value.split(',').map(s => s.trim()).filter(Boolean)
+                    app_id: document.getElementById('new_flow_app_id').value.trim(),
+                    flow_key: document.getElementById('new_flow_key').value.trim(),
+                    flow_id: document.getElementById('new_flow_id').value.trim(),
+                    node_names: document.getElementById('new_node_names').value.split(',').map(s => s.trim()).filter(Boolean)
                 };
                 
-            await API.post('/core/v1/admin/flow-configs', config);
+                if (!config.app_id || !config.flow_key || !config.flow_id) {
+                    Utils.showToast('App ID, Flow Key e Flow ID sono obbligatori', 'error');
+                    return;
+                }
                 
-            Utils.showToast('Flow configuration saved', 'success');
+                await API.post('/core/v1/admin/flow-configs', config);
+                
+                Utils.showToast('Flow mapping salvata', 'success');
+                
+                // Clear form
+                document.getElementById('new_flow_app_id').value = '';
+                document.getElementById('new_flow_key').value = '';
+                document.getElementById('new_flow_id').value = '';
+                document.getElementById('new_node_names').value = '';
+                
+                setTimeout(() => this.loadFlowMappings(), 300);
             } catch (error) {
-            Utils.showToast('Failed to save flow configuration', 'error');
+                Utils.showToast('Errore salvataggio: ' + (error.message || 'Error'), 'error');
             }
         },
 

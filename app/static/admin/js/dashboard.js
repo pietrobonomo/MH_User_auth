@@ -194,6 +194,11 @@ async function loadPageData(page) {
                 await ConfigurationComponent.loadCredentials();
             }
             break;
+        case 'config-flows':
+            if (window.ConfigurationComponent?.loadFlowMappings) {
+                await ConfigurationComponent.loadFlowMappings();
+            }
+            break;
     }
 }
 

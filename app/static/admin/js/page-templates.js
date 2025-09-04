@@ -661,57 +661,39 @@ window.pageTemplates = {
             'config-flows': () => `
                 <div class="mb-6">
                     <h1 class="text-3xl font-bold">Flow Mappings</h1>
-                    <p class="text-base-content/60">Configure flow ID mappings and node names</p>
+                    <p class="text-base-content/60">Gestione mapping flow_key → flow_id per app</p>
                 </div>
                 
-                <!-- Tabs for future expansion -->
-                <div class="tabs tabs-boxed mb-6">
-                    <a href="#" class="tab tab-active" data-tab="mappings">Current Mappings</a>
-                    <a href="#" class="tab" data-tab="import">Import/Export</a>
-                    <a href="#" class="tab" data-tab="validation">Validation</a>
+                <!-- Flow Mappings by App -->
+                <div id="flow-mappings-container" class="space-y-6">
+                    <div class="loading loading-spinner loading-lg mx-auto"></div>
+                    <p class="text-center">Caricamento mappings...</p>
                 </div>
                 
-                <div id="tab-mappings" class="tab-content active">
-                    <div class="card bg-base-100 shadow-xl">
-                        <div class="card-body">
-                            <h2 class="card-title">Flow Configuration</h2>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div class="form-control">
-                                    <label class="label">App ID</label>
-                                    <input type="text" class="input input-bordered" id="flow_app_id" value="default" />
-                                </div>
-                                <div class="form-control">
-                                    <label class="label">Flow Key</label>
-                                    <input type="text" class="input input-bordered" id="flow_key" placeholder="e.g., news_writer" />
-                                </div>
-                                <div class="form-control">
-                                    <label class="label">Flow ID</label>
-                                    <input type="text" class="input input-bordered" id="flow_id" placeholder="94b0..." />
-                                </div>
-                                <div class="form-control">
-                                    <label class="label">Node Names (comma-separated)</label>
-                                    <input type="text" class="input input-bordered" id="node_names" placeholder="node1,node2" />
-                                </div>
+                <!-- Add New Mapping -->
+                <div class="card bg-base-100 shadow-xl mt-6">
+                    <div class="card-body">
+                        <h2 class="card-title">Add New Flow Mapping</h2>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="form-control">
+                                <label class="label">App ID</label>
+                                <input type="text" class="input input-bordered" id="new_flow_app_id" placeholder="my_app" />
                             </div>
-                            <div class="card-actions justify-end mt-4">
-                                <button class="btn btn-primary" onclick="upsertFlowConfig()">Save Flow Config</button>
+                            <div class="form-control">
+                                <label class="label">Flow Key</label>
+                                <input type="text" class="input input-bordered" id="new_flow_key" placeholder="content_generator" />
+                            </div>
+                            <div class="form-control">
+                                <label class="label">Flow ID (from Flowise)</label>
+                                <input type="text" class="input input-bordered" id="new_flow_id" placeholder="b52ba55e-fc16-404f..." />
+                            </div>
+                            <div class="form-control">
+                                <label class="label">Node Names (comma-separated)</label>
+                                <input type="text" class="input input-bordered" id="new_node_names" placeholder="agentAgentflow_0,llmAgentflow_1" />
                             </div>
                         </div>
-                    </div>
-                </div>
-                
-                <div id="tab-import" class="tab-content">
-                    <div class="card bg-base-100 shadow-xl">
-                        <div class="card-body">
-                            <p class="text-center text-base-content/60">Import/Export functionality coming soon...</p>
-                        </div>
-                    </div>
-                </div>
-                
-                <div id="tab-validation" class="tab-content">
-                    <div class="card bg-base-100 shadow-xl">
-                        <div class="card-body">
-                            <p class="text-center text-base-content/60">Flow validation coming soon...</p>
+                        <div class="card-actions justify-end mt-4">
+                            <button class="btn btn-primary" onclick="ConfigurationComponent.addNewFlowMapping()">Add Flow Mapping</button>
                         </div>
                     </div>
                 </div>
