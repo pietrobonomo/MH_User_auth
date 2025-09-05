@@ -27,13 +27,19 @@ class SignupPayload(BaseModel):
 @router.post("/signup")
 async def signup(payload: SignupPayload) -> Dict[str, Any]:
     supabase_url, anon_key = _get_supabase_env()
-    headers = {"apikey": anon_key, "Content-Type": "application/json"}
+    headers = {
+        "apikey": anon_key,
+        "Authorization": f"Bearer {anon_key}",
+        "Content-Type": "application/json",
+    }
     body = {
         "email": payload.email.strip(),
         "password": payload.password,
         "options": {"emailRedirectTo": payload.redirect_to} if payload.redirect_to else {},
     }
-    async with httpx.AsyncClient(timeout=20) as client:
+    # Aumenta timeout per consentire a GoTrue/SMTP di completare (email/DB) senza 504
+    signup_timeout = httpx.Timeout(60.0, connect=10.0)
+    async with httpx.AsyncClient(timeout=signup_timeout) as client:
         resp = await client.post(f"{supabase_url}/auth/v1/signup", headers=headers, json=body)
     if resp.status_code not in (200, 201):
         raise HTTPException(status_code=resp.status_code, detail=resp.text)
@@ -48,7 +54,11 @@ class LoginPayload(BaseModel):
 @router.post("/login")
 async def login(payload: LoginPayload) -> Dict[str, Any]:
     supabase_url, anon_key = _get_supabase_env()
-    headers = {"apikey": anon_key, "Content-Type": "application/json"}
+    headers = {
+        "apikey": anon_key,
+        "Authorization": f"Bearer {anon_key}",
+        "Content-Type": "application/json",
+    }
     body = {"email": payload.email.strip(), "password": payload.password}
     async with httpx.AsyncClient(timeout=20) as client:
         resp = await client.post(
@@ -66,7 +76,11 @@ class RefreshPayload(BaseModel):
 @router.post("/refresh")
 async def refresh(payload: RefreshPayload) -> Dict[str, Any]:
     supabase_url, anon_key = _get_supabase_env()
-    headers = {"apikey": anon_key, "Content-Type": "application/json"}
+    headers = {
+        "apikey": anon_key,
+        "Authorization": f"Bearer {anon_key}",
+        "Content-Type": "application/json",
+    }
     body = {"refresh_token": payload.refresh_token}
     async with httpx.AsyncClient(timeout=20) as client:
         resp = await client.post(
@@ -85,7 +99,11 @@ class ForgotPayload(BaseModel):
 @router.post("/forgot-password")
 async def forgot_password(payload: ForgotPayload) -> Dict[str, Any]:
     supabase_url, anon_key = _get_supabase_env()
-    headers = {"apikey": anon_key, "Content-Type": "application/json"}
+    headers = {
+        "apikey": anon_key,
+        "Authorization": f"Bearer {anon_key}",
+        "Content-Type": "application/json",
+    }
     body = {"email": payload.email.strip()}
     if payload.redirect_to:
         body["redirect_to"] = payload.redirect_to
