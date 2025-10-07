@@ -883,7 +883,8 @@ async executeFlow() {
     
     async sendChatMessage() {
         const input = document.getElementById('chat-input');
-        const appId = document.getElementById('conv_app_id')?.value || 'default';
+        const appIdRaw = document.getElementById('conv_app_id')?.value;
+        const appId = (appIdRaw && appIdRaw.trim()) || 'smart_contact_form';  // Default al form pubblico
         const flowKey = document.getElementById('conv_flow_key')?.value;
         const userId = document.getElementById('conv_user_select')?.value;
         const chatContainer = document.getElementById('chat-messages');
