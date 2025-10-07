@@ -47,17 +47,19 @@ const API = {
         return this.call(endpoint);
     },
     
-    async post(endpoint, data) {
+    async post(endpoint, data, options = {}) {
         return this.call(endpoint, {
             method: 'POST',
-            body: data
+            body: data,
+            ...options
         });
     },
     
-    async put(endpoint, data) {
+    async put(endpoint, data, options = {}) {
         return this.call(endpoint, {
             method: 'PUT',
-            body: data
+            body: data,
+            ...options
         });
     },
     
