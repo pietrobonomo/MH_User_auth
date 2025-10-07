@@ -4,7 +4,7 @@ Core FastAPI standalone per autenticazione (via token esterni), crediti e proxy 
 Vedi anche `docs/core/auth_guide.md` per gli endpoint Auth proxy (signup/login/refresh/logout/user) pensati per gli sviluppatori di app.
 Per agenti AI: contesto completo in `docs/agents/agent_context.md`.
 
-[Guida completa: Setup Supabase passo-passo](docs/core/setup_supabase.md) · [Guida OpenRouter](docs/core/openrouter_setup.md)
+[Guida completa: Setup Supabase passo-passo](docs/core/setup_supabase.md) · [Guida OpenRouter](docs/core/openrouter_setup.md) · [Integrazione Form Pubblici](docs/core/public_form_integration.md)
 
 ## Avvio locale
 
