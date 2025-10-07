@@ -921,7 +921,10 @@ async executeFlow() {
             const authHeaders = { ...State.getAuthHeaders(), 'X-App-Id': appId };
             const payload = {
                 flow_key: flowKey,
-                data: { input: userMessage }
+                data: { 
+                    input: userMessage,
+                    _as_user_id: userId  // ✅ OBBLIGATORIO per X-Admin-Key
+                }
             };
             
             // Aggiungi session_id se esiste
