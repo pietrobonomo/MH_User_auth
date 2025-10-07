@@ -41,8 +41,10 @@ const TestingComponent = {
             const userSelect = document.getElementById('test_checkout_user');
             const affUser = document.getElementById('aff_user_select');
             const execUser = document.getElementById('exec_user_select');
+            const convUser = document.getElementById('conv_user_select');
             if (userSelect) userSelect.innerHTML = userOptions;
             if (affUser) affUser.innerHTML = userOptions;
+            if (convUser) convUser.innerHTML = userOptions;
             if (execUser) {
                 execUser.innerHTML = userOptions;
                 execUser.onchange = () => {
@@ -859,5 +861,175 @@ async executeFlow() {
     addToTimeline(action, status, details, category) {
         // Timeline rimossa - funzione disabilitata
         return;
+    },
+    
+    // === CONVERSATIONAL FLOW TESTING ===
+    
+    _chatSessionId: null,
+    _chatMessages: [],
+    
+    async sendChatMessage() {
+        const input = document.getElementById('chat-input');
+        const appId = document.getElementById('conv_app_id')?.value || 'default';
+        const flowKey = document.getElementById('conv_flow_key')?.value;
+        const userId = document.getElementById('conv_user_select')?.value;
+        const chatContainer = document.getElementById('chat-messages');
+        
+        if (!input || !input.value.trim()) {
+            Utils.showToast('Scrivi un messaggio', 'warning');
+            return;
         }
+        
+        if (!flowKey || !userId) {
+            Utils.showToast('Seleziona App, Flow e User', 'error');
+            return;
+        }
+        
+        const userMessage = input.value.trim();
+        input.value = '';
+        
+        // Aggiungi messaggio utente alla UI
+        this._chatMessages.push({ role: 'user', content: userMessage });
+        this._renderChat();
+        
+        // Aggiungi loading indicator
+        const loadingDiv = document.createElement('div');
+        loadingDiv.className = 'chat chat-start mb-2';
+        loadingDiv.id = 'chat-loading';
+        loadingDiv.innerHTML = `
+            <div class="chat-bubble bg-base-300">
+                <span class="loading loading-dots loading-sm"></span>
+            </div>
+        `;
+        chatContainer.appendChild(loadingDiv);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+        
+        try {
+            const authHeaders = { ...State.getAuthHeaders(), 'X-App-Id': appId };
+            const payload = {
+                flow_key: flowKey,
+                data: { input: userMessage }
+            };
+            
+            // Aggiungi session_id se esiste
+            if (this._chatSessionId) {
+                payload.session_id = this._chatSessionId;
+            }
+            
+            const response = await API.post('/core/v1/providers/flowise/execute', payload, { headers: authHeaders });
+            
+            // Rimuovi loading
+            document.getElementById('chat-loading')?.remove();
+            
+            // Estrai risposta e session_id
+            const botMessage = response.result?.text || 'No response';
+            const sessionId = response.flow?.session_id;
+            const isConversational = response.flow?.is_conversational;
+            
+            // Salva session_id se nuovo
+            if (sessionId && !this._chatSessionId) {
+                this._chatSessionId = sessionId;
+                this._updateSessionBadge();
+                Utils.showToast('Conversazione iniziata!', 'success');
+            }
+            
+            // Aggiungi risposta bot
+            this._chatMessages.push({ role: 'assistant', content: botMessage });
+            this._renderChat();
+            
+            // Log info
+            console.log('Chat response:', {
+                sessionId,
+                isConversational,
+                messageCount: this._chatMessages.length
+            });
+            
+        } catch (error) {
+            document.getElementById('chat-loading')?.remove();
+            this._chatMessages.push({ 
+                role: 'error', 
+                content: `Errore: ${error.message}` 
+            });
+            this._renderChat();
+            Utils.showToast(`Errore: ${error.message}`, 'error');
+        }
+    },
+    
+    newConversation() {
+        if (this._chatMessages.length > 0) {
+            if (!confirm('Iniziare una nuova conversazione? La cronologia corrente sarà persa.')) {
+                return;
+            }
+        }
+        
+        this._chatSessionId = null;
+        this._chatMessages = [];
+        this._renderChat();
+        this._updateSessionBadge();
+        Utils.showToast('Nuova conversazione avviata', 'info');
+    },
+    
+    clearChat() {
+        if (this._chatMessages.length === 0) return;
+        
+        if (confirm('Pulire la cronologia chat?')) {
+            this._chatMessages = [];
+            this._renderChat();
+            Utils.showToast('Chat pulita', 'info');
+        }
+    },
+    
+    _renderChat() {
+        const container = document.getElementById('chat-messages');
+        if (!container) return;
+        
+        if (this._chatMessages.length === 0) {
+            container.innerHTML = `
+                <div class="text-center text-base-content/60 py-8">
+                    <i class="fas fa-comment-dots text-4xl mb-2"></i>
+                    <p>Inizia una conversazione inviando un messaggio</p>
+                </div>
+            `;
+            return;
+        }
+        
+        container.innerHTML = this._chatMessages.map(msg => {
+            const isUser = msg.role === 'user';
+            const isError = msg.role === 'error';
+            const chatClass = isUser ? 'chat-end' : 'chat-start';
+            const bubbleClass = isUser ? 'bg-primary text-primary-content' : 
+                                isError ? 'bg-error text-error-content' : 
+                                'bg-base-300';
+            
+            return `
+                <div class="chat ${chatClass} mb-2">
+                    <div class="chat-bubble ${bubbleClass}">
+                        ${this._escapeHtml(msg.content)}
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+        // Auto-scroll
+        container.scrollTop = container.scrollHeight;
+    },
+    
+    _updateSessionBadge() {
+        const badge = document.getElementById('conv-session-badge');
+        if (!badge) return;
+        
+        if (this._chatSessionId) {
+            badge.textContent = `Session: ${this._chatSessionId.substring(0, 8)}...`;
+            badge.className = 'badge badge-success';
+        } else {
+            badge.textContent = 'No session';
+            badge.className = 'badge badge-ghost';
+        }
+    },
+    
+    _escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
 };

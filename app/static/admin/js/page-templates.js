@@ -1224,6 +1224,77 @@ window.pageTemplates = {
                             <div id="test-output" class="mt-4"></div>
                         </div>
                     </div>
+
+                    <!-- Conversational Flow Test -->
+                    <div class="card bg-base-100 shadow-xl lg:col-span-2">
+                        <div class="card-body">
+                            <div class="flex justify-between items-center mb-4">
+                                <h2 class="card-title">
+                                    <i class="fas fa-comments text-info"></i>
+                                    Conversational Flow Test
+                                </h2>
+                                <div class="badge badge-info" id="conv-session-badge">No session</div>
+                            </div>
+                            
+                            <div class="alert alert-info mb-4">
+                                <i class="fas fa-info-circle"></i>
+                                <span>Test flow conversazionali che mantengono il contesto tra messaggi</span>
+                            </div>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                                <div class="form-control">
+                                    <label class="label">
+                                        <span class="label-text">App ID</span>
+                                    </label>
+                                    <select class="select select-bordered select-sm" id="conv_app_id"></select>
+                                </div>
+                                <div class="form-control">
+                                    <label class="label">
+                                        <span class="label-text">Flow Key</span>
+                                    </label>
+                                    <select class="select select-bordered select-sm" id="conv_flow_key"></select>
+                                </div>
+                                <div class="form-control">
+                                    <label class="label">
+                                        <span class="label-text">User</span>
+                                    </label>
+                                    <select class="select select-bordered select-sm" id="conv_user_select"></select>
+                                </div>
+                            </div>
+                            
+                            <!-- Chat Container -->
+                            <div class="bg-base-200 rounded-lg p-4 mb-4 h-96 overflow-y-auto" id="chat-messages">
+                                <div class="text-center text-base-content/60 py-8">
+                                    <i class="fas fa-comment-dots text-4xl mb-2"></i>
+                                    <p>Inizia una conversazione inviando un messaggio</p>
+                                </div>
+                            </div>
+                            
+                            <!-- Input -->
+                            <div class="flex gap-2 mb-4">
+                                <input 
+                                    type="text" 
+                                    class="input input-bordered flex-1" 
+                                    id="chat-input" 
+                                    placeholder="Scrivi un messaggio..."
+                                    onkeypress="if(event.key==='Enter') TestingComponent.sendChatMessage()"
+                                />
+                                <button class="btn btn-primary" onclick="TestingComponent.sendChatMessage()">
+                                    <i class="fas fa-paper-plane"></i>
+                                </button>
+                            </div>
+                            
+                            <!-- Actions -->
+                            <div class="flex gap-2">
+                                <button class="btn btn-warning btn-sm" onclick="TestingComponent.newConversation()">
+                                    <i class="fas fa-plus"></i> Nuova Conversazione
+                                </button>
+                                <button class="btn btn-ghost btn-sm" onclick="TestingComponent.clearChat()">
+                                    <i class="fas fa-trash"></i> Pulisci Chat
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             `
         };
