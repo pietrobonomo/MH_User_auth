@@ -691,6 +691,15 @@ window.pageTemplates = {
                                 <label class="label">Node Names (comma-separated)</label>
                                 <input type="text" class="input input-bordered" id="new_node_names" placeholder="agentAgentflow_0,llmAgentflow_1" />
                             </div>
+                            <div class="form-control">
+                                <label class="label cursor-pointer justify-start gap-4">
+                                    <input type="checkbox" class="checkbox checkbox-primary" id="new_is_conversational" />
+                                    <span class="label-text">
+                                        <i class="fas fa-comments text-primary mr-2"></i>
+                                        <strong>Conversational Mode</strong> - Mantiene il contesto tra chiamate usando session_id
+                                    </span>
+                                </label>
+                            </div>
                         </div>
                         <div class="card-actions justify-end mt-4">
                             <button class="btn btn-primary" onclick="ConfigurationComponent.addNewFlowMapping()">Add Flow Mapping</button>

@@ -41,20 +41,25 @@ async loadFlowMappings() {
                                                 <th>Flow Key</th>
                                                 <th>Flow ID</th>
                                                 <th>Node Names</th>
+                                                <th>Conversational</th>
                                                 <th>Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             ${appFlows.map(f => {
                                                 const nodes = Array.isArray(f.node_names) ? f.node_names.join(',') : '';
+                                                const isConv = f.is_conversational ? true : false;
                                                 return `
                                                     <tr>
                                                         <td><strong>${f.flow_key}</strong></td>
                                                         <td><code class="text-xs">${f.flow_id}</code></td>
                                                         <td><span class="text-xs opacity-70">${nodes}</span></td>
                                                         <td>
+                                                            ${isConv ? '<span class="badge badge-success">🔗 Yes</span>' : '<span class="badge badge-ghost">No</span>'}
+                                                        </td>
+                                                        <td>
                                                             <button class="btn btn-xs btn-primary mr-1" 
-                                                                onclick="ConfigurationComponent.editFlowMapping('${f.app_id}','${f.flow_key}','${f.flow_id}','${nodes}')">
+                                                                onclick="ConfigurationComponent.editFlowMapping('${f.app_id}','${f.flow_key}','${f.flow_id}','${nodes}',${isConv})">
                                                                 Edit
                                                             </button>
                                                             <button class="btn btn-xs btn-error" 
@@ -80,15 +85,17 @@ async loadFlowMappings() {
                 if (container) container.innerHTML = `<div class="alert alert-error">Errore caricamento: ${e.message}</div>`;
             }
         },
-        editFlowMapping(appId, flowKey, flowId, nodeNames) {
+        editFlowMapping(appId, flowKey, flowId, nodeNames, isConversational) {
             const appField = document.getElementById('new_flow_app_id');
             const fk = document.getElementById('new_flow_key');
             const fid = document.getElementById('new_flow_id');
             const nn = document.getElementById('new_node_names');
+            const conv = document.getElementById('new_is_conversational');
             if (appField) appField.value = appId;
             if (fk) fk.value = flowKey;
             if (fid) fid.value = flowId;
             if (nn) nn.value = nodeNames;
+            if (conv) conv.checked = isConversational || false;
         },
         async deleteFlowMapping(appId, flowKey) {
             if (!flowKey) return;
@@ -121,11 +128,13 @@ async loadFlowMappings() {
         },
 async addNewFlowMapping() {
             try {
+                const convCheckbox = document.getElementById('new_is_conversational');
                 const config = {
                     app_id: document.getElementById('new_flow_app_id').value.trim(),
                     flow_key: document.getElementById('new_flow_key').value.trim(),
                     flow_id: document.getElementById('new_flow_id').value.trim(),
-                    node_names: document.getElementById('new_node_names').value.split(',').map(s => s.trim()).filter(Boolean)
+                    node_names: document.getElementById('new_node_names').value.split(',').map(s => s.trim()).filter(Boolean),
+                    is_conversational: convCheckbox ? convCheckbox.checked : false
                 };
                 
                 if (!config.app_id || !config.flow_key || !config.flow_id) {
@@ -142,6 +151,7 @@ async addNewFlowMapping() {
                 document.getElementById('new_flow_key').value = '';
                 document.getElementById('new_flow_id').value = '';
                 document.getElementById('new_node_names').value = '';
+                if (convCheckbox) convCheckbox.checked = false;
                 
                 setTimeout(() => this.loadFlowMappings(), 300);
             } catch (error) {
