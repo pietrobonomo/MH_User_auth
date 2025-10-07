@@ -77,10 +77,21 @@ const TestingComponent = {
                 convAppId.innerHTML = apps.app_ids.map(a => `<option value="${a}">${a}</option>`).join('');
             }
             
-            // Popola flow keys per conversazionale
+            // Popola flow keys per conversazionale (SOLO flow con is_conversational=true)
             const allFlows = await API.get('/core/v1/admin/flow-configs/all?app_id=*');
             if (convFlow && allFlows.items) {
-                convFlow.innerHTML = allFlows.items.map(f => `<option value="${f.flow_key}" data-app="${f.app_id}">${f.app_id}/${f.flow_key}</option>`).join('');
+                const conversationalFlows = allFlows.items.filter(f => f.is_conversational === true);
+                if (conversationalFlows.length > 0) {
+                    convFlow.innerHTML = conversationalFlows.map(f => `<option value="${f.flow_key}" data-app="${f.app_id}">${f.app_id}/${f.flow_key}</option>`).join('');
+                } else {
+                    convFlow.innerHTML = '<option value="">Nessun flow conversazionale configurato</option>';
+                }
+                
+                // Popola app_id con solo le app che hanno flow conversazionali
+                const conversationalApps = [...new Set(conversationalFlows.map(f => f.app_id))];
+                if (convAppId && conversationalApps.length > 0) {
+                    convAppId.innerHTML = conversationalApps.map(a => `<option value="${a}">${a}</option>`).join('');
+                }
             }
 
             // Ripristina ultimo test se presente

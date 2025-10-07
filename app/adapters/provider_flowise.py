@@ -129,7 +129,8 @@ class FlowiseAdapter:
         # Aggiungi sessionId per flow conversazionali (se fornito)
         if session_id:
             enriched["sessionId"] = session_id
-            logging.warning(f"🔗 CONVERSATIONAL: Sto passando sessionId={session_id} a Flowise")
+            enriched["chatId"] = session_id  # Flowise potrebbe usare chatId invece
+            logging.warning(f"🔗 CONVERSATIONAL: Sto passando sessionId={session_id} e chatId={session_id} a Flowise")
             logging.warning(f"🔗 CONVERSATIONAL: Payload keys: {list(enriched.keys())}")
         
         url = f"{base_url.rstrip('/')}/{flow_id}"
