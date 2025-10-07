@@ -6,8 +6,12 @@ from typing import Any, Dict, Optional
 import os
 import httpx
 import secrets
+import logging
+import traceback
 
 from app.services.openrouter_provisioning import OpenRouterProvisioningService
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter()
@@ -97,11 +101,20 @@ async def admin_create_user(
     # Provisioning OpenRouter
     openrouter: Dict[str, Any] = {"provisioned": False}
     try:
+        logger.info(f"🔄 Inizio provisioning OpenRouter per user_id={user_id}, email={email}")
         prov = OpenRouterProvisioningService()
+        logger.info(f"✅ OpenRouterProvisioningService inizializzato correttamente")
         res = await prov.create_user_key(user_id=user_id, user_email=email)
+        logger.info(f"✅ Chiave OpenRouter creata con successo: {res.get('key_name')}")
         openrouter = {"provisioned": True, **res}
     except Exception as e:
-        openrouter = {"provisioned": False, "error": str(e)}
+        error_details = {
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "traceback": traceback.format_exc()
+        }
+        logger.error(f"❌ Errore provisioning OpenRouter per {email}: {error_details}")
+        openrouter = {"provisioned": False, **error_details}
 
     return {
         "status": "success",

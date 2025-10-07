@@ -5,7 +5,10 @@ from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 import os
 import httpx
+import logging
+import asyncio
 
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -43,7 +46,60 @@ async def signup(payload: SignupPayload) -> Dict[str, Any]:
         resp = await client.post(f"{supabase_url}/auth/v1/signup", headers=headers, json=body)
     if resp.status_code not in (200, 201):
         raise HTTPException(status_code=resp.status_code, detail=resp.text)
-    return resp.json()
+    
+    signup_result = resp.json()
+    
+    # Provisioning OpenRouter in background (non bloccare la risposta signup)
+    user_data = signup_result.get("user") or {}
+    user_id = user_data.get("id")
+    email = payload.email.strip()
+    
+    if user_id:
+        # Avvia provisioning in background
+        asyncio.create_task(_provision_user_after_signup(user_id, email))
+        logger.info(f"🚀 Avviato provisioning in background per {email} (user_id={user_id})")
+    else:
+        logger.warning(f"⚠️ Signup completato ma user_id non trovato nella risposta per {email}")
+    
+    return signup_result
+
+
+async def _provision_user_after_signup(user_id: str, email: str) -> None:
+    """
+    Task in background per provisioning OpenRouter e crediti iniziali dopo signup.
+    Non blocca la risposta all'utente.
+    """
+    try:
+        # Attendi che il profilo sia creato da trigger Supabase
+        await asyncio.sleep(2)
+        
+        logger.info(f"🔄 Inizio provisioning post-signup per {email}")
+        
+        # 1) Accredita crediti iniziali
+        from app.api.endpoints.pricing import _supabase_get_pricing_config
+        try:
+            cfg = await _supabase_get_pricing_config(os.environ.get("CORE_APP_ID", "default"))
+            initial_credits = float((cfg or {}).get("signup_initial_credits", 0.0) or 0.0)
+            
+            if initial_credits > 0.0:
+                from app.services.credits_supabase import SupabaseCreditsLedger
+                ledger = SupabaseCreditsLedger()
+                await ledger.credit(user_id=user_id, amount=initial_credits, reason="signup_initial_credits")
+                logger.info(f"✅ Crediti iniziali accreditati: {initial_credits} per {email}")
+        except Exception as e:
+            logger.error(f"❌ Errore accredito crediti per {email}: {e}")
+        
+        # 2) Provisioning OpenRouter
+        try:
+            from app.services.openrouter_provisioning import OpenRouterProvisioningService
+            prov = OpenRouterProvisioningService()
+            res = await prov.create_user_key(user_id=user_id, user_email=email)
+            logger.info(f"✅ Provisioning OpenRouter completato per {email}: {res.get('key_name')}")
+        except Exception as e:
+            logger.error(f"❌ Errore provisioning OpenRouter per {email}: {e}")
+            
+    except Exception as e:
+        logger.error(f"❌ Errore generale provisioning post-signup per {email}: {e}")
 
 
 class LoginPayload(BaseModel):

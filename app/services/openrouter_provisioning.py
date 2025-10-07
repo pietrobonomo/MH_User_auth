@@ -8,12 +8,15 @@ Provisioning OpenRouter per utente usando la Provisioning Key globale.
 """
 
 import os
+import logging
 from datetime import datetime
 from typing import Optional, Dict, Any
 
 import httpx
 
 from app.services.pricing_service import AdvancedPricingSystem as PricingService
+
+logger = logging.getLogger(__name__)
 
 class OpenRouterProvisioningService:
     def __init__(self) -> None:
@@ -39,7 +42,9 @@ class OpenRouterProvisioningService:
         e crea il mapping in openrouter_user_keys per tracking.
         """
         # 0) Assicura profilo presente
+        logger.info(f"🔄 Step 0: Assicuro profilo esistente per user_id={user_id}")
         await self._ensure_profile(user_id=user_id, email=user_email)
+        logger.info(f"✅ Step 0: Profilo assicurato")
         
         # 1) Crea chiave su OpenRouter
         timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
@@ -47,11 +52,21 @@ class OpenRouterProvisioningService:
         payload = {"name": key_name, "limit": limit or self.default_limit, "label": f"FlowStarter User: {user_email}"}
         headers = {"Authorization": f"Bearer {self.provisioning_key}", "Content-Type": "application/json"}
         
+        logger.info(f"🔄 Step 1: Creo chiave su OpenRouter: {self.base_url}/keys")
+        logger.debug(f"Payload: {payload}")
+        
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(f"{self.base_url}/keys", headers=headers, json=payload)
+        
+        logger.info(f"📡 Risposta OpenRouter: status={resp.status_code}")
+        
         if resp.status_code not in (200, 201):
-            raise RuntimeError(f"OpenRouter create key failed: {resp.status_code} {resp.text}")
+            error_body = resp.text
+            logger.error(f"❌ OpenRouter create key failed: {resp.status_code} - {error_body}")
+            raise RuntimeError(f"OpenRouter create key failed: {resp.status_code} {error_body}")
         data = resp.json()
+        logger.info(f"✅ Step 1: Chiave OpenRouter creata, parsing risposta...")
+        logger.debug(f"Risposta JSON: {data}")
 
         # 2) Estrai la chiave API dalla risposta OpenRouter
         user_api_key = None
@@ -59,9 +74,11 @@ class OpenRouterProvisioningService:
         for k in ("key", "api_key", "token", "value"):
             if isinstance(data, dict) and k in data and isinstance(data[k], str):
                 user_api_key = data[k]
+                logger.info(f"✅ Step 2: Chiave API trovata nel campo '{k}'")
                 break
         
         if not user_api_key:
+            logger.error(f"❌ OpenRouter non ha restituito una chiave API valida. Campi disponibili: {list(data.keys()) if isinstance(data, dict) else 'non è un dict'}")
             raise RuntimeError(f"OpenRouter non ha restituito una chiave API valida: {data}")
 
         # 3) Metadati chiave
@@ -71,6 +88,7 @@ class OpenRouterProvisioningService:
         limit_val = float(limit or self.default_limit)
 
         # 4) Salva la chiave nel profilo utente e i metadati (come InsightDesk)
+        logger.info(f"🔄 Step 4: Salvo chiave nel profilo Supabase...")
         upsert_headers = {
             "apikey": self.service_key,
             "Authorization": f"Bearer {self.service_key}",
@@ -90,19 +108,32 @@ class OpenRouterProvisioningService:
             "updated_at": datetime.utcnow().isoformat()
         }
         
+        logger.debug(f"Profile payload: {profile_payload}")
+        
         async with httpx.AsyncClient(timeout=15.0) as client:
             r3 = await client.post(f"{self.supabase_url}/rest/v1/profiles", headers=upsert_headers, json=profile_payload)
+        
+        logger.info(f"📡 Risposta Supabase profiles: status={r3.status_code}")
+        
         if r3.status_code not in (200, 201):
+            logger.error(f"❌ Supabase update profile failed: {r3.status_code} - {r3.text}")
             raise RuntimeError(f"Supabase update profile failed: {r3.status_code} {r3.text}")
+        
+        logger.info(f"✅ Step 4: Chiave salvata nel profilo")
 
-        # 4) Salva mapping su Supabase per tracking (come fa InsightDesk)
+        # 5) Salva mapping su Supabase per tracking (come fa InsightDesk)
+        logger.info(f"🔄 Step 5: Salvo mapping in openrouter_user_keys...")
         mapping_payload = {"user_id": user_id, "key_name": key_name}
         async with httpx.AsyncClient(timeout=15.0) as client:
             r2 = await client.post(f"{self.supabase_url}/rest/v1/openrouter_user_keys", headers=upsert_headers, json=mapping_payload)
         if r2.status_code not in (200, 201):
             # Non bloccare se il mapping fallisce, la chiave è già salvata nel profilo
-            pass
+            logger.warning(f"⚠️  Mapping openrouter_user_keys fallito (non critico): {r2.status_code} - {r2.text}")
+        else:
+            logger.info(f"✅ Step 5: Mapping salvato")
 
+        logger.info(f"🎉 Provisioning completato con successo per {user_email}")
+        
         return {
             "key_name": key_name,
             "api_key": user_api_key,
