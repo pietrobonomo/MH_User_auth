@@ -81,7 +81,7 @@ async def flowise_affordability_check(
         user_id = user["id"]
 
     app_id_for_threshold = X_App_Id or os.environ.get("CORE_APP_ID", "default")
-    # Carica config e calcola sia soglia per-app sia stima costi del flow
+    # Carica config per leggere la soglia minima configurata in App Affordability
     try:
         await pricing._load_from_supabase_async(app_id_for_threshold)
     except Exception:
@@ -101,16 +101,14 @@ async def flowise_affordability_check(
         except Exception:
             min_gate = 0.0
 
-    # Stima crediti richiesti per il flow specifico
-    estimated = float(pricing.calculate_operation_cost_credits("flowise_execute", {"flow_key": flow_key, "flow_id": flow_id}))
-    required = max(min_gate, estimated)
+    # Usa SOLO il gate configurato in App Affordability (no stima automatica)
+    required = min_gate
     available = await credits_ledger.get_balance(user_id)
     can_afford = available >= required
 
     return {
         "app_id": app_id_for_threshold,
         "minimum_required": min_gate,
-        "estimated_credits": estimated,
         "required_credits": required,
         "available_credits": available,
         "can_afford": can_afford,
