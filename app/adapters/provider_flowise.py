@@ -140,6 +140,8 @@ class FlowiseAdapter:
         try:
             async with httpx.AsyncClient(timeout=timeout_seconds) as client:
                 logging.info(f"🚀 Chiamando Flowise: POST {url} con timeout {timeout_seconds}s")
+                if session_id:
+                    logging.warning(f"🔍 PAYLOAD COMPLETO INVIATO A FLOWISE: {json.dumps(enriched, indent=2)}")
                 resp = await client.post(url, headers=headers, json=enriched)
             
             resp.raise_for_status() # Lancia eccezione per status >= 400
