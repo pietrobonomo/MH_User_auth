@@ -69,6 +69,19 @@ const TestingComponent = {
             // Flow keys for selected app
             await this.loadFlowKeys();
             if (appSelect) appSelect.onchange = () => this.loadFlowKeys();
+            
+            // Popola dropdown conversazionali
+            const convAppId = document.getElementById('conv_app_id');
+            const convFlow = document.getElementById('conv_flow_key');
+            if (convAppId && Array.isArray(apps.app_ids)) {
+                convAppId.innerHTML = apps.app_ids.map(a => `<option value="${a}">${a}</option>`).join('');
+            }
+            
+            // Popola flow keys per conversazionale
+            const allFlows = await API.get('/core/v1/admin/flow-configs/all?app_id=*');
+            if (convFlow && allFlows.items) {
+                convFlow.innerHTML = allFlows.items.map(f => `<option value="${f.flow_key}" data-app="${f.app_id}">${f.app_id}/${f.flow_key}</option>`).join('');
+            }
 
             // Ripristina ultimo test se presente
             this._restoreLastRun();
