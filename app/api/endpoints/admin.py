@@ -61,7 +61,7 @@ async def get_flow_config(
     }
     async with httpx.AsyncClient(timeout=10) as client:
         # Primo tentativo: eq (match esatto)
-        url = f"{supabase_url}/rest/v1/flow_configs?app_id=eq.{app_id}&flow_key=eq.{flow_key}&select=app_id,flow_key,flow_id,node_names"
+        url = f"{supabase_url}/rest/v1/flow_configs?app_id=eq.{app_id}&flow_key=eq.{flow_key}&select=app_id,flow_key,flow_id,node_names,is_conversational,metadata"
         resp = await client.get(url, headers=headers)
         if resp.status_code != 200:
             raise HTTPException(status_code=resp.status_code, detail=resp.text)
@@ -69,13 +69,13 @@ async def get_flow_config(
         # Fallback: ilike (case-insensitive) se vuoto
         if not data:
             # Punta prima a ilike exact (senza wildcard), poi con wildcard
-            url_ilike = f"{supabase_url}/rest/v1/flow_configs?app_id=eq.{app_id}&flow_key=ilike.{flow_key}&select=app_id,flow_key,flow_id,node_names"
+            url_ilike = f"{supabase_url}/rest/v1/flow_configs?app_id=eq.{app_id}&flow_key=ilike.{flow_key}&select=app_id,flow_key,flow_id,node_names,is_conversational,metadata"
             resp2 = await client.get(url_ilike, headers=headers)
             if resp2.status_code != 200:
                 raise HTTPException(status_code=resp2.status_code, detail=resp2.text)
             data = resp2.json()
             if not data:
-                url_ilike2 = f"{supabase_url}/rest/v1/flow_configs?app_id=eq.{app_id}&flow_key=ilike.*{flow_key}*&select=app_id,flow_key,flow_id,node_names"
+                url_ilike2 = f"{supabase_url}/rest/v1/flow_configs?app_id=eq.{app_id}&flow_key=ilike.*{flow_key}*&select=app_id,flow_key,flow_id,node_names,is_conversational,metadata"
                 resp3 = await client.get(url_ilike2, headers=headers)
                 if resp3.status_code != 200:
                     raise HTTPException(status_code=resp3.status_code, detail=resp3.text)
@@ -112,9 +112,9 @@ async def list_flow_configs(
     }
     async with httpx.AsyncClient(timeout=10) as client:
         if app_id == "*":
-            url = f"{supabase_url}/rest/v1/flow_configs?select=app_id,flow_key,flow_id,node_names,created_at&order=app_id,flow_key"
+            url = f"{supabase_url}/rest/v1/flow_configs?select=app_id,flow_key,flow_id,node_names,is_conversational,metadata,created_at&order=app_id,flow_key"
         else:
-            url = f"{supabase_url}/rest/v1/flow_configs?app_id=eq.{app_id}&select=app_id,flow_key,flow_id,node_names,created_at&order=flow_key"
+            url = f"{supabase_url}/rest/v1/flow_configs?app_id=eq.{app_id}&select=app_id,flow_key,flow_id,node_names,is_conversational,metadata,created_at&order=flow_key"
         resp = await client.get(url, headers=headers)
         if resp.status_code != 200:
             raise HTTPException(status_code=resp.status_code, detail=resp.text)
