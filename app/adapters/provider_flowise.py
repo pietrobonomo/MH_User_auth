@@ -129,7 +129,8 @@ class FlowiseAdapter:
         # Aggiungi sessionId per flow conversazionali (se fornito)
         if session_id:
             enriched["sessionId"] = session_id
-            logging.info(f"🔗 Usando sessionId per conversazione: {session_id}")
+            logging.warning(f"🔗 CONVERSATIONAL: Sto passando sessionId={session_id} a Flowise")
+            logging.warning(f"🔗 CONVERSATIONAL: Payload keys: {list(enriched.keys())}")
         
         url = f"{base_url.rstrip('/')}/{flow_id}"
 
@@ -144,6 +145,11 @@ class FlowiseAdapter:
             
             result = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {"text": resp.text}
             logging.info(f"✅ Risposta da Flowise ricevuta (status {resp.status_code})")
+            
+            # Log session IDs per debug conversazioni
+            returned_session = result.get("sessionId") or result.get("chatId")
+            if session_id and returned_session and session_id != returned_session:
+                logging.warning(f"⚠️ CONVERSATIONAL: Session ID CAMBIATO! Inviato={session_id}, Ricevuto={returned_session}")
             return result, {"cost_credits": None}
 
         except httpx.TimeoutException as e:
