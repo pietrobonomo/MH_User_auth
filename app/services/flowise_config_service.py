@@ -49,19 +49,31 @@ class FlowiseConfigService:
         # Prefer DB lookup se app_id fornito
         flow_id = None
         node_names: List[str] = []
+        is_conversational = False
+        metadata = {}
+        
         if app_id:
             db_cfg = await self._lookup_db_config(app_id, flow_key)
             if db_cfg:
                 flow_id = db_cfg.get("flow_id")
                 if isinstance(db_cfg.get("node_names"), list):
                     node_names = [str(n) for n in db_cfg["node_names"]]
+                is_conversational = db_cfg.get("is_conversational", False)
+                metadata = db_cfg.get("metadata", {})
+        
         if not flow_id:
             flow_id = self._resolve_flow_id(flow_key)
         if not flow_id:
             return None
         if not node_names:
             node_names = self._resolve_node_names(flow_key)
-        return {"flow_id": flow_id, "node_names": node_names}
+        
+        return {
+            "flow_id": flow_id, 
+            "node_names": node_names,
+            "is_conversational": is_conversational,
+            "metadata": metadata
+        }
 
     def _resolve_flow_id(self, flow_key: str) -> Optional[str]:
         env_name = _FLOW_KEY_TO_ENV.get(flow_key)
