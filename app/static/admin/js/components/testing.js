@@ -883,11 +883,17 @@ async executeFlow() {
     
     async sendChatMessage() {
         const input = document.getElementById('chat-input');
-        const appIdRaw = document.getElementById('conv_app_id')?.value;
-        const appId = (appIdRaw && appIdRaw.trim()) || 'smart_contact_form';  // Default al form pubblico
-        const flowKey = document.getElementById('conv_flow_key')?.value;
+        const flowKeySelect = document.getElementById('conv_flow_key');
+        const flowKey = flowKeySelect?.value;
+        
+        // Estrai app_id dal flow selezionato (attributo data-app)
+        const selectedOption = flowKeySelect?.options[flowKeySelect.selectedIndex];
+        const appId = selectedOption?.getAttribute('data-app') || 'smart_contact_form';
+        
         const userId = document.getElementById('conv_user_select')?.value;
         const chatContainer = document.getElementById('chat-messages');
+        
+        console.log('Chat test config:', { appId, flowKey, userId });
         
         if (!input || !input.value.trim()) {
             Utils.showToast('Scrivi un messaggio', 'warning');
