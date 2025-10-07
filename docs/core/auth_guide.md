@@ -8,6 +8,10 @@ Flow Starter non reinventa l'auth: usa Supabase Auth. Per semplificare gli svilu
 
 ### Endpoints disponibili
 - `POST /core/v1/auth/signup` – body: `{ email, password, redirect_to? }`
+  - ✨ **Automatic provisioning**: Crea l'utente su Supabase e avvia automaticamente in background:
+    - Accredito crediti iniziali (da `signup_initial_credits` in pricing config)
+    - Creazione chiavi OpenRouter per l'utente (se `OPENROUTER_PROVISIONING_KEY` configurata)
+  - La risposta è immediata (provisioning non blocca il signup)
 - `POST /core/v1/auth/login` – body: `{ email, password }` → `{ access_token, refresh_token, ... }`
 - `POST /core/v1/auth/refresh` – body: `{ refresh_token }`
 - `POST /core/v1/auth/logout` – header: `Authorization: Bearer <access_token>`
@@ -47,6 +51,7 @@ const me = await getUserAuth(API, access_token);
 ```
 
 ### Note
-- Gli endpoint sono thin proxies verso Supabase Auth. È possibile usare direttamente l’SDK Supabase se preferisci.
+- Gli endpoint sono thin proxies verso Supabase Auth. È possibile usare direttamente l'SDK Supabase se preferisci.
 - Per sviluppo locale, metti `SUPABASE_URL`, `SUPABASE_ANON_KEY` nel `.env` e riavvia.
+- **Provisioning automatico**: Dal 2025-10-07, `/auth/signup` esegue automaticamente il provisioning OpenRouter e l'accredito crediti iniziali in background. Non serve chiamare endpoint aggiuntivi dopo il signup.
 
