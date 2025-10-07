@@ -96,10 +96,16 @@ create table if not exists public.flow_configs (
   flow_key text not null,
   flow_id text not null,
   node_names jsonb default '[]'::jsonb,
+  is_conversational boolean default false,  -- Se true, il flow mantiene conversazione tra chiamate
+  metadata jsonb default '{}'::jsonb,  -- Metadata aggiuntivi per estensioni future
   created_at timestamp with time zone default now(),
   updated_at timestamp with time zone default now(),
   primary key (app_id, flow_key)
 );
+
+-- Aggiungi colonne a installazioni esistenti
+alter table public.flow_configs add column if not exists is_conversational boolean default false;
+alter table public.flow_configs add column if not exists metadata jsonb default '{}'::jsonb;
 
 alter table public.flow_configs enable row level security;
 -- Policy di esempio: nessun accesso client; accesso solo via service role
@@ -107,6 +113,38 @@ do $$ begin
   begin
     create policy flow_configs_deny_all on public.flow_configs for all
       using (false) with check (false);
+  exception when duplicate_object then null; end;
+end $$;
+
+-- Tabella per tracking delle sessioni conversazionali (opzionale, per analytics)
+create table if not exists public.flow_sessions (
+  id uuid primary key default gen_random_uuid(),
+  session_id text not null,
+  user_id uuid references public.profiles(id) on delete cascade,
+  app_id text not null,
+  flow_key text not null,
+  flow_id text not null,
+  first_message_at timestamp with time zone default now(),
+  last_message_at timestamp with time zone default now(),
+  message_count integer default 1,
+  metadata jsonb default '{}'::jsonb,
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone default now(),
+  unique(session_id, user_id)
+);
+
+-- Indici per performance sessioni
+create index if not exists idx_flow_sessions_user_id on public.flow_sessions(user_id);
+create index if not exists idx_flow_sessions_session_id on public.flow_sessions(session_id);
+create index if not exists idx_flow_sessions_app_flow on public.flow_sessions(app_id, flow_key);
+create index if not exists idx_flow_sessions_last_message on public.flow_sessions(last_message_at desc);
+
+-- RLS per flow_sessions (solo il proprietario può vedere le proprie sessioni)
+alter table public.flow_sessions enable row level security;
+do $$ begin
+  begin
+    create policy flow_sessions_select_self on public.flow_sessions
+      for select using (user_id = auth.uid());
   exception when duplicate_object then null; end;
 end $$;
 
