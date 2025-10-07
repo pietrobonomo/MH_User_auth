@@ -166,6 +166,7 @@ class FlowiseRequest(BaseModel):
     flow_id: Optional[str] = None
     flow_key: Optional[str] = None
     node_names: Optional[List[str]] = None
+    session_id: Optional[str] = None  # Per flow conversazionali
     data: Dict[str, Any]
 
 
@@ -193,16 +194,25 @@ async def flowise_execute(
         user_id = user["id"]
 
     flow_id = payload.flow_id
+    is_conversational = False  # Default: flow stateless
+    
     if not flow_id and payload.flow_key:
         from app.services.flowise_config_service import FlowiseConfigService
         cfg = await FlowiseConfigService().get_config_for_user(user_id, payload.flow_key, app_id=X_App_Id)
         if not cfg:
             raise HTTPException(status_code=404, detail=f"flow_config non trovata per app_id={X_App_Id or ''} flow_key={payload.flow_key}")
         flow_id = cfg.get("flow_id")
+        is_conversational = bool(cfg.get("is_conversational", False))
         if not payload.node_names and isinstance(cfg.get("node_names"), list):
             payload.node_names = [str(n) for n in cfg["node_names"]]
     if not flow_id:
         raise HTTPException(status_code=400, detail="flow_id o flow_key obbligatorio")
+    
+    # Gestione session_id per flow conversazionali
+    session_id_to_use = None
+    if is_conversational and payload.session_id:
+        session_id_to_use = payload.session_id
+        logging.info(f"🔗 Flow conversazionale: usando session_id={session_id_to_use}")
 
     data_for_adapter: Dict[str, Any] = {**payload.data}
     if payload.node_names:
@@ -262,7 +272,8 @@ async def flowise_execute(
         result, usage = await flowise.execute(
             user_id=user_id, 
             flow_id=flow_id, 
-            data=data_for_adapter
+            data=data_for_adapter,
+            session_id=session_id_to_use  # Passa sessionId se flow conversazionale
         )
     except Exception as e:
         logging.error(f"❌ Errore esecuzione Flowise Adapter: {e}", exc_info=True)
@@ -303,6 +314,9 @@ async def flowise_execute(
             asyncio.create_task(_process_pricing_async())
         except Exception as e:
             logging.warning("Scheduling async pricing fallito: %s", e)
+        # Estrai sessionId dalla risposta Flowise (se presente)
+        response_session_id = result.get("sessionId") or result.get("chatId")
+        
         return {
             "payload_sent": data_for_adapter,
             "result": result,
@@ -312,7 +326,12 @@ async def flowise_execute(
                 "mode": "async",
                 "usage_before_usd": usage_before,
             },
-            "flow": {"flow_id": flow_id, "flow_key": payload.flow_key}
+            "flow": {
+                "flow_id": flow_id, 
+                "flow_key": payload.flow_key,
+                "is_conversational": is_conversational,
+                "session_id": response_session_id  # Ritorna sessionId per prossime chiamate
+            }
         }
     else:
         # Modalità sincrona (come prima)
@@ -344,6 +363,9 @@ async def flowise_execute(
             logging.error(f"⚠️ Errore gestione crediti per user {user['id']}: {e}", exc_info=True)
             raise HTTPException(status_code=502, detail="Addebito crediti fallito")
 
+        # Estrai sessionId dalla risposta Flowise (se presente)
+        response_session_id = result.get("sessionId") or result.get("chatId")
+        
         return {
             "payload_sent": data_for_adapter,
             "result": result,
@@ -360,7 +382,12 @@ async def flowise_execute(
                 "credits_to_debit": actual_cost_credits,
             },
             "debit": debit_details,
-            "flow": {"flow_id": flow_id, "flow_key": payload.flow_key}
+            "flow": {
+                "flow_id": flow_id, 
+                "flow_key": payload.flow_key,
+                "is_conversational": is_conversational,
+                "session_id": response_session_id  # Ritorna sessionId per prossime chiamate
+            }
         }
 
 

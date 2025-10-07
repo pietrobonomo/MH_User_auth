@@ -22,6 +22,7 @@ class FlowConfigUpsert(BaseModel):
     flow_key: str = Field(...)
     flow_id: str = Field(...)
     node_names: Optional[List[str]] = None
+    is_conversational: Optional[bool] = False  # Flow mantiene conversazione tra chiamate
 
 
 auth_backend = SupabaseAuthBackend()
@@ -258,6 +259,7 @@ async def upsert_flow_config(
         "flow_key": payload.flow_key,
         "flow_id": payload.flow_id,
         "node_names": payload.node_names or [],
+        "is_conversational": payload.is_conversational or False,
     }
     async with httpx.AsyncClient(timeout=10) as client:
         # Forza upsert esplicito sul vincolo composto (app_id, flow_key)

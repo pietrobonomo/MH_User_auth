@@ -68,7 +68,7 @@ class FlowiseAdapter:
         self._api_key_cache = None
         return None
 
-    async def execute(self, user_id: str, flow_id: str, data: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    async def execute(self, user_id: str, flow_id: str, data: Dict[str, Any], session_id: Optional[str] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         base_url = await self._get_base_url()
         api_key = await self._get_api_key()
         if not base_url or not api_key:
@@ -125,6 +125,11 @@ class FlowiseAdapter:
         # Inietta chiavi OpenRouter nei nodi AgentV2 se necessario
         if node_list and user_api_key:
             enriched = _inject_agent_v2_keys_simple(enriched, node_list, user_api_key)
+        
+        # Aggiungi sessionId per flow conversazionali (se fornito)
+        if session_id:
+            enriched["sessionId"] = session_id
+            logging.info(f"🔗 Usando sessionId per conversazione: {session_id}")
         
         url = f"{base_url.rstrip('/')}/{flow_id}"
 
