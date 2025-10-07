@@ -93,7 +93,7 @@ class FlowiseConfigService:
             "Authorization": f"Bearer {service_key}",
             "Accept": "application/json",
         }
-        url = f"{supabase_url}/rest/v1/flow_configs?app_id=eq.{app_id}&flow_key=eq.{flow_key}&select=flow_id,node_names"
+        url = f"{supabase_url}/rest/v1/flow_configs?app_id=eq.{app_id}&flow_key=eq.{flow_key}&select=flow_id,node_names,is_conversational,metadata"
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(url, headers=headers)
             if resp.status_code != 200:
@@ -123,6 +123,8 @@ class FlowiseConfigService:
             return {
                 "flow_id": row.get("flow_id"),
                 "node_names": dedup_nodes,
+                "is_conversational": row.get("is_conversational", False),
+                "metadata": row.get("metadata", {}),
             }
 
 
