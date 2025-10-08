@@ -3099,3 +3099,54 @@ curl -X POST -H "X-Admin-Key: \$ADMIN_KEY" \\
 
             `
         };
+
+        // Users Management
+        window.pageTemplates['users'] = () => {
+            return `
+                <div class="mb-6">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <h1 class="text-3xl font-bold">Gestione Utenti</h1>
+                            <p class="text-base-content/60">Visualizza, modifica ed elimina utenti</p>
+                        </div>
+                        <button class="btn btn-primary" onclick="UsersComponent.showCreateUserForm()">
+                            <i class="fas fa-user-plus"></i>
+                            Nuovo Utente
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Search & Filters -->
+                <div class="card bg-base-100 shadow-xl mb-6">
+                    <div class="card-body">
+                        <div class="form-control">
+                            <div class="input-group">
+                                <input type="text" 
+                                       placeholder="Cerca per email..." 
+                                       class="input input-bordered w-full" 
+                                       id="users-search-input"
+                                       onkeyup="if(event.key === 'Enter') UsersComponent.loadUsers(this.value)" />
+                                <button class="btn btn-square btn-primary" onclick="UsersComponent.loadUsers(document.getElementById('users-search-input').value)">
+                                    <i class="fas fa-search"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Users List -->
+                <div class="card bg-base-100 shadow-xl">
+                    <div class="card-body">
+                        <h2 class="card-title mb-4">
+                            <i class="fas fa-users"></i>
+                            Lista Utenti
+                        </h2>
+                        <div id="users-list-container">
+                            <div class="flex items-center justify-center py-8">
+                                <span class="loading loading-spinner loading-lg"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        };

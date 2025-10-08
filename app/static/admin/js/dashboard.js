@@ -161,6 +161,11 @@ async function loadPageData(page) {
         case 'overview':
             await loadOverviewMetrics();
             break;
+        case 'users':
+            if (window.UsersComponent?.loadUsers) {
+                await UsersComponent.loadUsers();
+            }
+            break;
         case 'business-config':
             await PricingComponent.loadPricingConfig();
             break;
@@ -411,6 +416,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.ObservabilityComponent = ObservabilityComponent;
     window.ConfigurationComponent = ConfigurationComponent;
     window.TestingComponent = TestingComponent;
+    window.UsersComponent = UsersComponent;
     // Shim per onclick nei template: upsertFlowConfig()
     if (!window.upsertFlowConfig) {
         window.upsertFlowConfig = () => ConfigurationComponent.upsertFlowConfig();
