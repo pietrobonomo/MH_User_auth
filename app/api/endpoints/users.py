@@ -167,6 +167,16 @@ async def admin_get_user(
         
         profile = profiles[0]
 
+        # Estrai dati OpenRouter dal profilo
+        openrouter_keys = []
+        if profile.get('openrouter_key_name'):
+            openrouter_keys.append({
+                'key_name': profile.get('openrouter_key_name'),
+                'limit_usd': profile.get('openrouter_key_limit', 0),
+                'is_active': profile.get('openrouter_provisioning_status') == 'active',
+                'created_at': profile.get('openrouter_key_created_at')
+            })
+
         # 2) Subscription attiva
         subscription = None
         try:
@@ -192,18 +202,6 @@ async def admin_get_user(
                 credits_history = history_resp.json() or []
         except Exception as e:
             logger.warning(f"Errore caricamento storico crediti per {user_id}: {e}")
-
-        # 4) OpenRouter keys
-        openrouter_keys = []
-        try:
-            or_resp = await client.get(
-                f"{supabase_url}/rest/v1/openrouter_user_keys?user_id=eq.{user_id}&select=*",
-                headers=headers
-            )
-            if or_resp.status_code == 200:
-                openrouter_keys = or_resp.json() or []
-        except Exception as e:
-            logger.warning(f"Errore caricamento chiavi OpenRouter per {user_id}: {e}")
 
     return {
         "status": "success",
