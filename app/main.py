@@ -22,13 +22,24 @@ app = FastAPI(
 )
 
 # =============================
-# CORS TEST: Allow all origins
+# CORS Configuration
 # =============================
-print("[CORS] TEST MODE: Allowing ALL origins")
+# Legge CORE_CORS_ORIGIN dalla env var e fa split su virgola
+cors_origins_str = os.environ.get("CORE_CORS_ORIGIN", "http://127.0.0.1:5173")
+origins = [origin.strip() for origin in cors_origins_str.split(",") if origin.strip()]
+
+# Aggiungi localhost per dev se non già presente
+if "http://localhost:5173" not in origins:
+    origins.append("http://localhost:5173")
+if "http://127.0.0.1:5173" not in origins:
+    origins.append("http://127.0.0.1:5173")
+
+# Log per debug
+print(f"[CORS] Allowed origins: {origins}")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # TEST: Allow all
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
