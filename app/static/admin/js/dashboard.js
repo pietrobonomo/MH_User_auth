@@ -262,17 +262,20 @@ async function loadOverviewMetrics() {
             console.error('Failed to load credits:', e);
         }
         
-        // Hide setup alert if configured
-        if (State.token || State.adminKey) {
-            const setupAlert = document.getElementById('setup-alert');
-            if (setupAlert && !document.querySelector('#metric-users').textContent.includes('N/A')) {
-                setupAlert.style.display = 'none';
+        // Hide admin key info if configured
+        if (State.adminKey) {
+            const adminKeyInfo = document.getElementById('admin-key-info');
+            if (adminKeyInfo) {
+                adminKeyInfo.style.display = 'none';
             }
         }
     } catch (error) {
         console.error('Failed to load metrics:', error);
-        const setupAlert = document.getElementById('setup-alert');
-        if (setupAlert) setupAlert.style.display = 'block';
+        // Show admin key info only if not configured
+        if (!State.adminKey) {
+            const adminKeyInfo = document.getElementById('admin-key-info');
+            if (adminKeyInfo) adminKeyInfo.style.display = 'block';
+        }
     }
 }
 

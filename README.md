@@ -4,7 +4,7 @@ Core FastAPI standalone per autenticazione (via token esterni), crediti e proxy 
 Vedi anche `docs/core/auth_guide.md` per gli endpoint Auth proxy (signup/login/refresh/logout/user) pensati per gli sviluppatori di app.
 Per agenti AI: contesto completo in `docs/agents/agent_context.md`.
 
-[Guida completa: Setup Supabase passo-passo](docs/core/setup_supabase.md) · [Guida OpenRouter](docs/core/openrouter_setup.md) · [Integrazione Form Pubblici](docs/core/public_form_integration.md) · [Flow Conversazionali](docs/core/conversational_flows.md)
+[Guida completa: Setup Supabase passo-passo](docs/core/setup_supabase.md) · [Guida OpenRouter](docs/core/openrouter_setup.md)
 
 ## Avvio locale
 
@@ -53,14 +53,31 @@ Vedi `.env.example`.
 - Billing (LemonSqueezy): `LEMONSQUEEZY_API_KEY`, `LEMONSQUEEZY_SIGNING_SECRET`, `LEMONSQUEEZY_BYPASS_SIGNATURE` (solo dev), `LEMONSQUEEZY_STORE_ID`, `BILLING_PROVIDER=lemonsqueezy`
 - Core: `CORE_ADMIN_KEY`, `CORE_ENCRYPTION_KEY`, `CORE_APP_ID` (default: `default`)
 
-## Deploy su Railway (one‑click)
+## Deploy su Railway
+
+### ✨ Setup Semplificato (Raccomandato)
+
+Con il branch `simplify-railway-setup`, FlowStarter è **completamente configurabile tramite ENV vars** - zero setup wizard necessario!
+
+**📖 [Guida Completa Railway Setup](RAILWAY_SETUP.md)** ← Leggi qui per deployment semplificato
+
+### Configurazione Rapida
+
+1. **Applica schema SQL** al database Postgres (`sql/000_full_schema.sql`)
+2. **Configura variabili Railway** (vedi `RAILWAY_SETUP.md`)
+3. **Deploy** - tutto funziona automaticamente!
+4. **Dashboard Admin**: `/core/v1/admin-ui/dashboard`
+   - Login con `ADMIN_UI_USER` / `ADMIN_UI_PASSWORD`
+   - Configura Admin Key nel Quick Setup
+
+### Setup Tradizionale (Self-Hosted)
 
 1. Prepara un progetto Supabase e applica lo schema (`sql/000_full_schema.sql`).
-2. Premi “Deploy on Railway” su questo repo e compila le ENV richieste (vedi lista sopra).
+2. Premi "Deploy on Railway" su questo repo e compila le ENV richieste (vedi lista sopra).
 3. Aggiungi un servizio Flowise puntando al tuo fork GitHub oppure immagine ufficiale Docker.
    - Fork: `pietrobonomo/Flowise` ([link repo](https://github.com/pietrobonomo/Flowise))
    - Oppure immagine: `flowiseai/flowise:<version>`
-4. Imposta `FLOWISE_BASE_URL` nel servizio core usando l’URL interno/esterno del servizio Flowise.
+4. Imposta `FLOWISE_BASE_URL` nel servizio core usando l'URL interno/esterno del servizio Flowise.
 5. Verifica `/health` e accedi alla dashboard admin `/core/v1/admin-ui/dashboard`.
 - (Opzionale single-tenant) `NL_FLOW_*_ID`, `FLOWISE_NODE_MAP_JSON`
 

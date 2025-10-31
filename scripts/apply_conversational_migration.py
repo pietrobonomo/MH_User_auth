@@ -52,3 +52,18 @@ if __name__ == "__main__":
     migration_sql = read_migration()
     if migration_sql:
         execute_sql(migration_sql)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

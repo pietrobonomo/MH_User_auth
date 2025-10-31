@@ -1,75 +1,11 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
-  "services": {
-    "flow-starter": {
-      "source": {
-        "repo": "pietrobonomo/flow_starter"
-      },
-      "build": {
-        "builder": "NIXPACKS"
-      },
-      "healthcheckPath": "/health",
-      "variables": {
-        "CORE_APP_ID": "default",
-        "CORE_CORS_ORIGIN": "https://${{RAILWAY_PUBLIC_DOMAIN}}",
-        "SUPABASE_URL": "${{Postgres.DATABASE_URL}}",
-        "SUPABASE_SERVICE_KEY": "${{Postgres.POSTGRES_PASSWORD}}",
-        "SUPABASE_VERIFY_DISABLED": "0",
-        "FLOWISE_BASE_URL": "${{flowise.RAILWAY_PRIVATE_URL}}/api/v1/prediction",
-        "FLOWISE_API_KEY": "${{flowise.FLOWISE_PASSWORD}}",
-        "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
-        "BILLING_PROVIDER": "lemonsqueezy"
-      }
-    },
-    "flowise": {
-      "source": {
-        "repo": "pietrobonomo/Flowise"
-      },
-      "variables": {
-        "PORT": "3000",
-        "DATABASE_PATH": "/data/flowise.sqlite",
-        "FLOWISE_PASSWORD": {
-          "generator": {
-            "type": "hex",
-            "length": 32
-          }
-        },
-        "LOG_LEVEL": "info"
-      },
-      "volumes": [
-        {
-          "name": "flowise-data",
-          "mountPath": "/data"
-        }
-      ]
-    },
-    "postgres": {
-      "source": {
-        "image": "supabase/postgres:15.1.0.147"
-      },
-      "variables": {
-        "POSTGRES_DB": "postgres",
-        "POSTGRES_USER": "supabase_admin",
-        "POSTGRES_PASSWORD": {
-          "generator": {
-            "type": "hex",
-            "length": 32
-          }
-        },
-        "JWT_SECRET": {
-          "generator": {
-            "type": "hex", 
-            "length": 32
-          }
-        }
-      },
-      "volumes": [
-        {
-          "name": "postgres-data",
-          "mountPath": "/var/lib/postgresql/data"
-        }
-      ]
-    }
+  "build": {
+    "builder": "NIXPACKS"
+  },
+  "deploy": {
+    "startCommand": "uvicorn app.main:app --host 0.0.0.0 --port $PORT",
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10
   }
 }
-

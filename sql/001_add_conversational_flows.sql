@@ -50,3 +50,18 @@ COMMENT ON COLUMN public.flow_configs.is_conversational IS
 
 COMMENT ON TABLE public.flow_sessions IS 
   'Tracking delle sessioni conversazionali per analytics e debugging';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
