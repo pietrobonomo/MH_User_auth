@@ -96,53 +96,73 @@ class CredentialsManager:
             return False
 
     async def get_credential(self, provider: str, key: str) -> Optional[str]:
-        """Legge credential decriptata da Supabase."""
+        """Legge credential decriptata da Supabase, con fallback a ENV vars per Railway.
+        
+        Ordine di ricerca:
+        1. Cache in memoria
+        2. Database criptato (se disponibile)
+        3. ENV vars (fallback per Railway/deployment semplificati)
+        """
         cache_key = f"{provider}:{key}"
         
         # Check cache prima
         if cache_key in self._cache:
             return self._cache[cache_key]
 
+        # Prova prima dal database criptato
         try:
             supabase_url = os.environ.get("SUPABASE_URL")
             service_key = os.environ.get("SUPABASE_SERVICE_KEY")
-            if not supabase_url or not service_key:
-                logger.error("Supabase non configurato (SUPABASE_URL/SERVICE_KEY mancanti) in get_credential")
-                return None
+            if supabase_url and service_key:
+                url = f"{supabase_url}/rest/v1/rpc/get_provider_credential"
+                headers = {
+                    "apikey": service_key,
+                    "Authorization": f"Bearer {service_key}",
+                    "Content-Type": "application/json"
+                }
+                payload = {
+                    "p_app_id": self.app_id,
+                    "p_provider": provider,
+                    "p_key": key,
+                    "p_encryption_key": "placeholder"  # Non usato nella funzione SQL
+                }
 
-            url = f"{supabase_url}/rest/v1/rpc/get_provider_credential"
-            headers = {
-                "apikey": service_key,
-                "Authorization": f"Bearer {service_key}",
-                "Content-Type": "application/json"
-            }
-            payload = {
-                "p_app_id": self.app_id,
-                "p_provider": provider,
-                "p_key": key,
-                "p_encryption_key": "placeholder"  # Non usato nella funzione SQL
-            }
-
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.post(url, headers=headers, json=payload)
-                logger.info(f"get_provider_credential status={resp.status_code} body_len={len(resp.text) if resp.text else 0}")
-                if resp.status_code == 200:
-                    encrypted_b64 = resp.text.strip('"')  # Rimuovi quote JSON
-                    if encrypted_b64 and encrypted_b64 != "null":
-                        # Decripta
-                        fernet = Fernet(self.encryption_key.encode())
-                        encrypted = base64.b64decode(encrypted_b64.encode())
-                        decrypted = fernet.decrypt(encrypted).decode()
-                        
-                        # Cache locale
-                        self._cache[cache_key] = decrypted
-                        return decrypted
-                else:
-                    logger.error(f"Errore RPC get_provider_credential: {resp.status_code} {resp.text[:200]}")
-                return None
-        except Exception:
-            logger.exception("Eccezione in get_credential")
-            return None
+                async with httpx.AsyncClient(timeout=10) as client:
+                    resp = await client.post(url, headers=headers, json=payload)
+                    logger.info(f"get_provider_credential status={resp.status_code} body_len={len(resp.text) if resp.text else 0}")
+                    if resp.status_code == 200:
+                        encrypted_b64 = resp.text.strip('"')  # Rimuovi quote JSON
+                        if encrypted_b64 and encrypted_b64 != "null":
+                            # Decripta
+                            fernet = Fernet(self.encryption_key.encode())
+                            encrypted = base64.b64decode(encrypted_b64.encode())
+                            decrypted = fernet.decrypt(encrypted).decode()
+                            
+                            # Cache locale
+                            self._cache[cache_key] = decrypted
+                            logger.info(f"✅ Credential loaded from database: {provider}:{key}")
+                            return decrypted
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to load credential from DB: {provider}:{key} - {e}")
+        
+        # Fallback a ENV vars per Railway/deployment semplificati
+        env_var_map = {
+            ("lemonsqueezy", "api_key"): "LEMONSQUEEZY_API_KEY",
+            ("lemonsqueezy", "webhook_secret"): "LEMONSQUEEZY_SIGNING_SECRET",
+            ("flowise", "base_url"): "FLOWISE_BASE_URL",
+            ("flowise", "api_key"): "FLOWISE_API_KEY",
+        }
+        
+        env_var_name = env_var_map.get((provider, key))
+        if env_var_name:
+            env_value = os.environ.get(env_var_name)
+            if env_value:
+                self._cache[cache_key] = env_value
+                logger.info(f"✅ Credential loaded from ENV var: {provider}:{key} → {env_var_name}")
+                return env_value
+        
+        logger.warning(f"❌ Credential not found (DB or ENV): {provider}:{key}")
+        return None
 
     async def test_connection(self, provider: str) -> Dict[str, Any]:
         """Testa connessione al provider usando le credentials salvate."""
