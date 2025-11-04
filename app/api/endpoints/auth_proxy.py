@@ -50,8 +50,8 @@ async def signup(payload: SignupPayload) -> Dict[str, Any]:
     signup_result = resp.json()
     
     # Provisioning OpenRouter in background (non bloccare la risposta signup)
-    user_data = signup_result.get("user") or {}
-    user_id = user_data.get("id")
+    # FIX: Supabase risponde con "id" alla radice, NON dentro "user"
+    user_id = signup_result.get("id") or (signup_result.get("user") or {}).get("id")
     email = payload.email.strip()
     
     if user_id:
@@ -60,6 +60,7 @@ async def signup(payload: SignupPayload) -> Dict[str, Any]:
         logger.info(f"🚀 Avviato provisioning in background per {email} (user_id={user_id})")
     else:
         logger.warning(f"⚠️ Signup completato ma user_id non trovato nella risposta per {email}")
+        logger.debug(f"Risposta Supabase keys: {list(signup_result.keys())}")
     
     return signup_result
 
