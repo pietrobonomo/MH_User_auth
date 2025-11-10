@@ -403,30 +403,204 @@ async def setup_wizard() -> str:
 
 @router.get("/status")
 async def setup_status() -> Dict[str, Any]:
-    """Controlla se il setup è già stato completato."""
-    try:
-        # Verifica se esistono credentials
-        credentials_mgr = CredentialsManager()
-        ls_api_key = await credentials_mgr.get_credential("lemonsqueezy", "api_key")
-        flowise_base_url = await credentials_mgr.get_credential("flowise", "base_url")
-        
-        supabase_configured = bool(os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_SERVICE_KEY"))
-        admin_key_configured = bool(os.environ.get("CORE_ADMIN_KEY"))
-        
-        return {
-            "setup_completed": bool(ls_api_key and supabase_configured),
-            "supabase_configured": supabase_configured,
-            "admin_key_configured": admin_key_configured,
-            "credentials_encrypted": bool(ls_api_key),
-            "flowise_configured": bool(flowise_base_url),
-            "next_action": "complete" if not ls_api_key else "configure_plans"
-        }
-    except Exception as e:
-        return {
-            "setup_completed": False,
-            "error": str(e),
-            "next_action": "complete"
-        }
+    """Controlla lo stato puntuale del setup iniziale, distinguendo campi configurati e mancanti."""
+    env = os.environ
+    app_id = env.get("CORE_APP_ID") or "default"
+    supabase_url = env.get("SUPABASE_URL")
+    supabase_service_key = env.get("SUPABASE_SERVICE_KEY")
+    admin_key = env.get("CORE_ADMIN_KEY")
+    encryption_key = env.get("CORE_ENCRYPTION_KEY")
+
+    sections: Dict[str, Dict[str, Any]] = {
+        "core": {
+            "label": "Core Runtime",
+            "required": True,
+            "configured": False,
+            "missing": [],
+            "sources": [],
+        },
+        "supabase": {
+            "label": "Supabase Connection",
+            "required": True,
+            "configured": False,
+            "missing": [],
+            "sources": [],
+        },
+        "lemonsqueezy": {
+            "label": "LemonSqueezy",
+            "required": True,
+            "configured": False,
+            "missing": ["api_key", "webhook_secret", "store_id"],
+            "sources": [],
+        },
+        "flowise": {
+            "label": "Flowise",
+            "required": False,
+            "configured": False,
+            "missing": ["base_url", "api_key"],
+            "sources": [],
+        },
+    }
+
+    diagnostics: Dict[str, Any] = {
+        "app_id": app_id,
+        "credentials_lookup_error": None,
+        "credentials_error": None,
+        "detected_app_ids": [],
+    }
+
+    # === Core runtime ===
+    if admin_key:
+        sections["core"]["sources"].append("env_admin_key")
+    else:
+        sections["core"]["missing"].append("admin_key")
+    if encryption_key:
+        sections["core"]["sources"].append("env_encryption_key")
+    else:
+        sections["core"]["missing"].append("encryption_key")
+    if app_id:
+        sections["core"]["sources"].append("env_app_id")
+    else:
+        sections["core"]["missing"].append("app_id")
+    sections["core"]["configured"] = len(sections["core"]["missing"]) == 0
+
+    # === Supabase ===
+    if supabase_url:
+        sections["supabase"]["sources"].append("env_url")
+    else:
+        sections["supabase"]["missing"].append("supabase_url")
+    if supabase_service_key:
+        sections["supabase"]["sources"].append("env_service_key")
+    else:
+        sections["supabase"]["missing"].append("supabase_service_key")
+    sections["supabase"]["configured"] = len(sections["supabase"]["missing"]) == 0
+
+    credentials_mgr: Optional[CredentialsManager] = None
+    credentials_mgr_error: Optional[str] = None
+    if sections["supabase"]["configured"] and encryption_key:
+        try:
+            credentials_mgr = CredentialsManager(app_id=app_id)
+        except Exception as exc:  # pylint: disable=broad-except
+            credentials_mgr_error = str(exc)
+            diagnostics["credentials_error"] = credentials_mgr_error
+    else:
+        credentials_mgr_error = "Supabase o CORE_ENCRYPTION_KEY mancanti"
+        diagnostics["credentials_error"] = credentials_mgr_error
+
+    # === LemonSqueezy ===
+    ls_api_key = env.get("LEMONSQUEEZY_API_KEY")
+    ls_webhook_secret = env.get("LEMONSQUEEZY_SIGNING_SECRET") or env.get("LEMONSQUEEZY_WEBHOOK_SECRET")
+    ls_store_id = env.get("LEMONSQUEEZY_STORE_ID")
+    if ls_api_key:
+        sections["lemonsqueezy"]["sources"].append("env_api_key")
+        sections["lemonsqueezy"]["missing"] = [m for m in sections["lemonsqueezy"]["missing"] if m != "api_key"]
+    if ls_webhook_secret:
+        sections["lemonsqueezy"]["sources"].append("env_webhook_secret")
+        sections["lemonsqueezy"]["missing"] = [m for m in sections["lemonsqueezy"]["missing"] if m != "webhook_secret"]
+    if ls_store_id:
+        sections["lemonsqueezy"]["sources"].append("env_store_id")
+        sections["lemonsqueezy"]["missing"] = [m for m in sections["lemonsqueezy"]["missing"] if m != "store_id"]
+
+    if credentials_mgr:
+        try:
+            if not ls_api_key:
+                ls_api_key = await credentials_mgr.get_credential("lemonsqueezy", "api_key")
+                if ls_api_key:
+                    sections["lemonsqueezy"]["sources"].append("encrypted_api_key")
+                    sections["lemonsqueezy"]["missing"] = [m for m in sections["lemonsqueezy"]["missing"] if m != "api_key"]
+            if not ls_webhook_secret:
+                ls_webhook_secret = await credentials_mgr.get_credential("lemonsqueezy", "webhook_secret")
+                if ls_webhook_secret:
+                    sections["lemonsqueezy"]["sources"].append("encrypted_webhook_secret")
+                    sections["lemonsqueezy"]["missing"] = [m for m in sections["lemonsqueezy"]["missing"] if m != "webhook_secret"]
+        except Exception as exc:  # pylint: disable=broad-except
+            diagnostics["credentials_error"] = str(exc)
+
+    if not ls_store_id and sections["supabase"]["configured"]:
+        try:
+            billing_cfg = BillingConfigService()
+            cfg = await billing_cfg.get_config(app_id=app_id)
+            store_id = (
+                (cfg.get("config") or {})
+                .get("lemonsqueezy", {})
+                .get("store_id")
+            )
+            if store_id:
+                ls_store_id = store_id
+                sections["lemonsqueezy"]["sources"].append("billing_config_store_id")
+                sections["lemonsqueezy"]["missing"] = [m for m in sections["lemonsqueezy"]["missing"] if m != "store_id"]
+        except Exception as exc:  # pylint: disable=broad-except
+            diagnostics["credentials_lookup_error"] = str(exc)
+
+    sections["lemonsqueezy"]["configured"] = len(sections["lemonsqueezy"]["missing"]) == 0
+
+    # === Flowise ===
+    flowise_base_url = env.get("FLOWISE_BASE_URL")
+    flowise_api_key = env.get("FLOWISE_API_KEY")
+    if flowise_base_url:
+        sections["flowise"]["sources"].append("env_base_url")
+        sections["flowise"]["missing"] = [m for m in sections["flowise"]["missing"] if m != "base_url"]
+    if flowise_api_key:
+        sections["flowise"]["sources"].append("env_api_key")
+        sections["flowise"]["missing"] = [m for m in sections["flowise"]["missing"] if m != "api_key"]
+
+    if credentials_mgr:
+        try:
+            if not flowise_base_url:
+                flowise_base_url = await credentials_mgr.get_credential("flowise", "base_url")
+                if flowise_base_url:
+                    sections["flowise"]["sources"].append("encrypted_base_url")
+                    sections["flowise"]["missing"] = [m for m in sections["flowise"]["missing"] if m != "base_url"]
+            if not flowise_api_key:
+                flowise_api_key = await credentials_mgr.get_credential("flowise", "api_key")
+                if flowise_api_key:
+                    sections["flowise"]["sources"].append("encrypted_api_key")
+                    sections["flowise"]["missing"] = [m for m in sections["flowise"]["missing"] if m != "api_key"]
+        except Exception as exc:  # pylint: disable=broad-except
+            diagnostics["credentials_error"] = str(exc)
+
+    sections["flowise"]["configured"] = len(sections["flowise"]["missing"]) == 0
+
+    # === Enumerazione app_id disponibili ===
+    if sections["supabase"]["configured"]:
+        try:
+            headers_json = {
+                "apikey": supabase_service_key,
+                "Authorization": f"Bearer {supabase_service_key}",
+                "Accept": "application/json",
+            }
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(
+                    f"{supabase_url}/rest/v1/provider_credentials?select=app_id,provider",
+                    headers=headers_json,
+                )
+            if resp.status_code == 200:
+                rows = resp.json() or []
+                detected = sorted(
+                    {row.get("app_id") for row in rows if isinstance(row, dict) and row.get("app_id")}
+                )
+                diagnostics["detected_app_ids"] = detected
+        except Exception as exc:  # pylint: disable=broad-except
+            diagnostics["credentials_lookup_error"] = str(exc)
+
+    required_sections_missing = [
+        key for key, info in sections.items() if info.get("required") and not info.get("configured")
+    ]
+    setup_completed = len(required_sections_missing) == 0
+
+    next_action = "configure_optional"
+    if required_sections_missing:
+        next_action = "complete"
+    elif not sections["flowise"]["configured"]:
+        next_action = "configure_flowise"
+
+    return {
+        "setup_completed": setup_completed,
+        "sections": sections,
+        "next_action": next_action,
+        "diagnostics": diagnostics,
+        "required_missing": required_sections_missing,
+    }
 
 
 @router.post("/reset")

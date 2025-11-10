@@ -195,43 +195,123 @@ async rotateCredential(credentialKey) {
     async checkSetupStatus() {
         const statusEl = document.getElementById('setup-status-content');
         const formCard = document.getElementById('setup-form-card');
-        
+        const fieldMap = {
+            supabase: {
+                supabase_url: 'supabase_url',
+                supabase_service_key: 'supabase_key'
+            },
+            lemonsqueezy: {
+                api_key: 'ls_api_key',
+                webhook_secret: 'ls_webhook_secret',
+                store_id: 'ls_store_id'
+            },
+            flowise: {
+                base_url: 'flowise_base_url',
+                api_key: 'flowise_api_key'
+            }
+        };
+
+        const markFieldStatus = (sectionKey, sectionInfo) => {
+            const mappings = fieldMap[sectionKey] || {};
+            Object.entries(mappings).forEach(([logicalKey, inputId]) => {
+                const input = document.getElementById(inputId);
+                if (!input) return;
+                const configured = sectionInfo.configured && !(sectionInfo.missing || []).includes(logicalKey);
+                if (configured) {
+                    input.placeholder = 'Configurato (valore nascosto)';
+                    input.value = '';
+                    input.classList.remove('input-error');
+                    input.classList.add('input-success');
+                } else {
+                    input.classList.remove('input-success');
+                    input.classList.add('input-error');
+                }
+            });
+        };
+
+        const renderSectionList = (sections) => {
+            const entries = Object.entries(sections || {});
+            if (!entries.length) return '';
+            return `
+                <div class="mt-3 space-y-2">
+                    ${entries.map(([key, info]) => {
+                        const isConfigured = info.configured;
+                        const isRequired = info.required;
+                        const icon = isConfigured ? '✅' : (isRequired ? '⚠️' : 'ℹ️');
+                        const missing = (info.missing || []).length
+                            ? `<div class="text-sm text-error">Mancano: ${(info.missing || []).join(', ')}</div>`
+                            : '';
+                        const source = (info.sources || []).length
+                            ? `<div class="text-xs opacity-70">Origini: ${(info.sources || []).join(', ')}</div>`
+                            : '';
+                        const optional = isRequired ? '' : ' (opzionale)';
+                        return `
+                            <div class="border border-base-300 rounded-lg p-3 bg-base-200">
+                                <div class="flex items-center justify-between">
+                                    <span class="font-semibold">${icon} ${info.label || key}${optional}</span>
+                                    <span class="badge ${isConfigured ? 'badge-success' : (isRequired ? 'badge-warning' : 'badge-ghost')}">
+                                        ${isConfigured ? 'Configurato' : 'Da completare'}
+                                    </span>
+                                </div>
+                                ${missing}
+                                ${source}
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+        };
+
         try {
-            // Timeout dopo 5 secondi
-            const timeoutPromise = new Promise((_, reject) => 
+            const timeoutPromise = new Promise((_, reject) =>
                 setTimeout(() => reject(new Error('Timeout - server non risponde')), 5000)
             );
-            
+
             const response = await Promise.race([
                 API.get('/core/v1/setup/status'),
                 timeoutPromise
             ]);
-            
+
             console.log('Setup status response:', response);
-            
+
+            const sections = response.sections || {};
+            const diagnostics = response.diagnostics || {};
+            const requiredMissing = response.required_missing || [];
+
+            Object.entries(sections).forEach(([sectionKey, info]) => markFieldStatus(sectionKey, info));
+
+            const detectedIds = diagnostics.detected_app_ids || [];
+            const appIdWarning = detectedIds.length && !detectedIds.includes(diagnostics.app_id || 'default')
+                ? `<div class="alert alert-info mt-3">
+                        <i class="fas fa-info-circle"></i>
+                        <div>
+                            <h3 class="font-semibold">App ID diverso rilevato</h3>
+                            <p class="text-sm">Credenziali presenti per gli app_id: ${detectedIds.join(', ')}. L'app corrente usa <code>${diagnostics.app_id}</code>.</p>
+                        </div>
+                   </div>`
+                : '';
+
             if (response.setup_completed) {
                 statusEl.innerHTML = `
-                    <div class="alert alert-success">
-                        <i class="fas fa-check-circle"></i>
-                        <div>
-                            <h3 class="font-bold">Setup Completato!</h3>
-                            <div class="text-sm">
-                                <p>✅ Supabase: ${response.supabase_configured ? 'Configurato' : 'Non configurato'}</p>
-                                <p>✅ Admin Key: ${response.admin_key_configured ? 'Configurata' : 'Non configurata'}</p>
-                                <p>✅ LemonSqueezy: ${response.credentials_encrypted ? 'Criptate e salvate' : 'Non salvate'}</p>
-                                <p>${response.flowise_configured ? '✅' : '❌'} Flowise: ${response.flowise_configured ? 'Configurato' : 'Non configurato'}</p>
-                            </div>
-                            <div class="mt-4">
-                                <button class="btn btn-warning btn-sm" id="reset-setup-btn">
-                                    <i class="fas fa-redo"></i> Reset Setup
-                                </button>
+                    <div class="space-y-3">
+                        <div class="alert alert-success">
+                            <i class="fas fa-check-circle"></i>
+                            <div>
+                                <h3 class="font-bold">Setup Completato!</h3>
+                                <p class="text-sm">Tutte le sezioni obbligatorie risultano configurate. Puoi procedere con la dashboard.</p>
+                                <div class="mt-3">
+                                    <button class="btn btn-warning btn-sm" id="reset-setup-btn">
+                                        <i class="fas fa-redo"></i> Reset Setup
+                                    </button>
+                                </div>
                             </div>
                         </div>
+                        ${renderSectionList(sections)}
+                        ${appIdWarning}
                     </div>
                 `;
-                formCard.style.display = 'none';
-                
-                // Aggiungi event listener al pulsante reset
+                if (formCard) formCard.style.display = 'none';
+
                 setTimeout(() => {
                     const resetBtn = document.getElementById('reset-setup-btn');
                     if (resetBtn) {
@@ -239,16 +319,24 @@ async rotateCredential(credentialKey) {
                     }
                 }, 100);
             } else {
+                const missingSummary = requiredMissing.length
+                    ? `<strong>Sezioni mancanti:</strong> ${requiredMissing.map(k => sections[k]?.label || k).join(', ')}`
+                    : 'Completa i campi mancanti per proseguire.';
                 statusEl.innerHTML = `
-                    <div class="alert alert-warning">
-                        <i class="fas fa-exclamation-triangle"></i>
-                        <div>
-                            <h3 class="font-bold">Setup Richiesto</h3>
-                            <p class="text-sm">Completa la configurazione iniziale per utilizzare Flow Starter.</p>
+                    <div class="space-y-3">
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <div>
+                                <h3 class="font-bold">Setup incompleto</h3>
+                                <p class="text-sm">${missingSummary}</p>
+                            </div>
                         </div>
+                        ${renderSectionList(sections)}
+                        ${diagnostics.credentials_error ? `<div class="alert alert-error"><i class="fas fa-lock"></i><div><h3 class="font-semibold">Accesso credenziali</h3><p class="text-sm">${diagnostics.credentials_error}</p></div></div>` : ''}
+                        ${appIdWarning}
                     </div>
                 `;
-                formCard.style.display = 'block';
+                if (formCard) formCard.style.display = 'block';
             }
         } catch (error) {
             console.error('Setup status check failed:', error);
@@ -264,7 +352,6 @@ async rotateCredential(credentialKey) {
                     </div>
                 </div>
             `;
-            // Mostra il form in caso di errore
             if (formCard) {
                 formCard.style.display = 'block';
             }
