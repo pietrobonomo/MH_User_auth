@@ -158,9 +158,29 @@ const UsersComponent = {
                                 <h4 class="font-bold mb-2">Informazioni Base</h4>
                                 <div class="space-y-2 text-sm">
                                     <div><strong>ID:</strong> <code class="text-xs">${user.id}</code></div>
-                                    <div><strong>Email:</strong> ${Utils.escapeHtml(user.email || 'N/A')}</div>
+                                    <div>
+                                        <strong>Email:</strong> ${Utils.escapeHtml(user.email || 'N/A')}
+                                        ${user.email_confirmed_at ? `
+                                            <span class="badge badge-success badge-sm ml-2">
+                                                <i class="fas fa-check-circle"></i> Confermata
+                                            </span>
+                                        ` : `
+                                            <span class="badge badge-warning badge-sm ml-2">
+                                                <i class="fas fa-exclamation-circle"></i> Non confermata
+                                            </span>
+                                        `}
+                                    </div>
+                                    ${!user.email_confirmed_at ? `
+                                    <div>
+                                        <button class="btn btn-sm btn-warning" onclick="UsersComponent.confirmUserEmail('${user.id}', '${Utils.escapeHtml(user.email || '')}')">
+                                            <i class="fas fa-envelope-check"></i>
+                                            Conferma Email
+                                        </button>
+                                    </div>
+                                    ` : ''}
                                     <div><strong>Nome:</strong> ${Utils.escapeHtml(user.full_name || user.first_name || 'N/A')}</div>
                                     <div><strong>Registrato:</strong> ${user.created_at ? new Date(user.created_at).toLocaleString('it-IT') : 'N/A'}</div>
+                                    ${user.email_confirmed_at ? `<div><strong>Email confermata:</strong> ${new Date(user.email_confirmed_at).toLocaleString('it-IT')}</div>` : ''}
                                 </div>
                             </div>
                         </div>
@@ -718,6 +738,32 @@ const UsersComponent = {
         } catch (error) {
             console.error('Failed to create user:', error);
             Utils.showToast('Errore creazione utente: ' + error.message, 'error');
+        } finally {
+            Utils.showLoading(false);
+        }
+    },
+
+    /**
+     * Conferma email utente
+     */
+    async confirmUserEmail(userId, email) {
+        if (!confirm(`Confermare l'email per ${email}?`)) {
+            return;
+        }
+
+        try {
+            Utils.showLoading();
+            const result = await API.post('/core/v1/auth/confirm-email', {
+                user_id: userId
+            });
+            
+            Utils.showToast('Email confermata con successo!', 'success');
+            
+            // Ricarica dettagli utente per aggiornare UI
+            await this.showUserDetail(userId);
+        } catch (error) {
+            console.error('Failed to confirm email:', error);
+            Utils.showToast('Errore conferma email: ' + error.message, 'error');
         } finally {
             Utils.showLoading(false);
         }

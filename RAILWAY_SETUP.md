@@ -37,6 +37,9 @@ SUPABASE_VERIFY_DISABLED=1
 
 # (Opzionale) URL diretto GotrueAuth per auth
 SUPABASE_AUTH_URL=http://gotrue-auth.railway.internal:9999
+
+# Auto-conferma email al signup (default: 1, per account Hobby senza SMTP)
+AUTO_CONFIRM_EMAIL=1
 ```
 
 ### LemonSqueezy

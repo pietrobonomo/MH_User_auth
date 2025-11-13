@@ -68,6 +68,7 @@ async def signup(payload: SignupPayload) -> Dict[str, Any]:
 async def _provision_user_after_signup(user_id: str, email: str) -> None:
     """
     Task in background per provisioning OpenRouter e crediti iniziali dopo signup.
+    Auto-conferma anche l'email (per account Supabase Hobby senza SMTP).
     Non blocca la risposta all'utente.
     """
     try:
@@ -75,6 +76,35 @@ async def _provision_user_after_signup(user_id: str, email: str) -> None:
         await asyncio.sleep(2)
         
         logger.info(f"🔄 Inizio provisioning post-signup per {email}")
+        
+        # 0) Auto-conferma email (se abilitata via env var, default: True per account Hobby senza SMTP)
+        auto_confirm_email = os.environ.get("AUTO_CONFIRM_EMAIL", "1").strip() in ("1", "true", "yes", "on")
+        if auto_confirm_email:
+            supabase_url = os.environ.get("SUPABASE_URL")
+            service_key = os.environ.get("SUPABASE_SERVICE_KEY")
+            if supabase_url and service_key:
+                try:
+                    headers_admin = {
+                        "apikey": service_key,
+                        "Authorization": f"Bearer {service_key}",
+                        "Content-Type": "application/json",
+                    }
+                    async with httpx.AsyncClient(timeout=10) as client:
+                        resp = await client.put(
+                            f"{supabase_url}/auth/v1/admin/users/{user_id}",
+                            headers=headers_admin,
+                            json={"email_confirm": True}
+                        )
+                    if resp.status_code in (200, 201):
+                        logger.info(f"✅ Email auto-confermata per {email}")
+                    else:
+                        logger.warning(f"⚠️ Impossibile auto-confermare email per {email}: {resp.status_code} - {resp.text}")
+                except Exception as e:
+                    logger.error(f"❌ Errore auto-conferma email per {email}: {e}")
+            else:
+                logger.warning(f"⚠️ AUTO_CONFIRM_EMAIL=1 ma SUPABASE_URL o SUPABASE_SERVICE_KEY mancanti")
+        else:
+            logger.info(f"ℹ️ Auto-conferma email disabilitata (AUTO_CONFIRM_EMAIL={os.environ.get('AUTO_CONFIRM_EMAIL', '1')})")
         
         # 1) Accredita crediti iniziali
         from app.api.endpoints.pricing import _supabase_get_pricing_config
@@ -196,5 +226,98 @@ async def get_user(Authorization: Optional[str] = Header(default=None)) -> Dict[
     if resp.status_code != 200:
         raise HTTPException(status_code=resp.status_code, detail=resp.text)
     return resp.json()
+
+
+class ConfirmEmailPayload(BaseModel):
+    user_id: Optional[str] = Field(default=None, description="ID utente (UUID) da confermare")
+    email: Optional[str] = Field(default=None, description="Email utente da confermare (alternativa a user_id)")
+
+
+@router.post("/confirm-email")
+async def confirm_email(
+    payload: ConfirmEmailPayload,
+    Authorization: Optional[str] = Header(default=None)
+) -> Dict[str, Any]:
+    """
+    Conferma manualmente l'email di un utente esistente.
+    Puoi specificare user_id O email (uno dei due è obbligatorio).
+    Usa Admin API di Supabase per confermare l'email.
+    """
+    supabase_url = os.environ.get("SUPABASE_URL")
+    service_key = os.environ.get("SUPABASE_SERVICE_KEY")
+    
+    if not supabase_url or not service_key:
+        raise HTTPException(status_code=500, detail="Supabase non configurato (SUPABASE_URL/SERVICE_KEY)")
+    
+    user_id = payload.user_id.strip() if payload.user_id else None
+    email = payload.email.strip() if payload.email else None
+    
+    # Se non c'è user_id ma c'è email, cerca l'utente per email
+    if not user_id and email:
+        headers_admin = {
+            "apikey": service_key,
+            "Authorization": f"Bearer {service_key}",
+            "Content-Type": "application/json",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                # Cerca utente per email usando Admin API
+                resp = await client.get(
+                    f"{supabase_url}/auth/v1/admin/users",
+                    headers=headers_admin,
+                    params={"email": email}
+                )
+            if resp.status_code == 200:
+                users = resp.json()
+                if users and len(users) > 0:
+                    user_id = users[0].get("id")
+                    if not user_id:
+                        raise HTTPException(status_code=404, detail=f"Utente trovato ma ID mancante per email {email}")
+                else:
+                    raise HTTPException(status_code=404, detail=f"Utente non trovato per email {email}")
+            else:
+                raise HTTPException(status_code=resp.status_code, detail=f"Errore ricerca utente: {resp.text}")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"❌ Errore ricerca utente per email {email}: {e}")
+            raise HTTPException(status_code=500, detail=f"Errore durante la ricerca utente: {str(e)}")
+    
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Specifica user_id o email")
+    
+    # Usa Admin API per confermare email
+    headers_admin = {
+        "apikey": service_key,
+        "Authorization": f"Bearer {service_key}",
+        "Content-Type": "application/json",
+    }
+    
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.put(
+                f"{supabase_url}/auth/v1/admin/users/{user_id}",
+                headers=headers_admin,
+                json={"email_confirm": True}
+            )
+        
+        if resp.status_code not in (200, 201):
+            error_text = resp.text
+            logger.error(f"❌ Errore conferma email per user_id={user_id}: {resp.status_code} - {error_text}")
+            raise HTTPException(status_code=resp.status_code, detail=error_text)
+        
+        user_data = resp.json()
+        logger.info(f"✅ Email confermata per user_id={user_id}")
+        
+        return {
+            "status": "ok",
+            "message": "Email confermata con successo",
+            "user": user_data
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Errore conferma email per user_id={user_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Errore durante la conferma email: {str(e)}")
 
 

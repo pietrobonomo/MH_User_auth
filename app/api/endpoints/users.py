@@ -153,7 +153,19 @@ async def admin_get_user(
     }
 
     async with httpx.AsyncClient(timeout=10) as client:
-        # 1) Profilo utente
+        # 1) Dati autenticazione (per email_confirmed_at)
+        auth_user = None
+        try:
+            auth_resp = await client.get(
+                f"{supabase_url}/auth/v1/admin/users/{user_id}",
+                headers=headers
+            )
+            if auth_resp.status_code == 200:
+                auth_user = auth_resp.json()
+        except Exception as e:
+            logger.warning(f"Errore caricamento dati auth per {user_id}: {e}")
+        
+        # 2) Profilo utente
         profile_resp = await client.get(
             f"{supabase_url}/rest/v1/profiles?id=eq.{user_id}&select=*",
             headers=headers
@@ -166,6 +178,11 @@ async def admin_get_user(
             raise HTTPException(status_code=404, detail="Utente non trovato")
         
         profile = profiles[0]
+        
+        # Aggiungi dati autenticazione al profilo se disponibili
+        if auth_user:
+            profile['email_confirmed_at'] = auth_user.get('email_confirmed_at')
+            profile['confirmed_at'] = auth_user.get('confirmed_at')  # Alias
 
         # Estrai dati OpenRouter dal profilo
         openrouter_keys = []
