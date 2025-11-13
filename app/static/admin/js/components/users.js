@@ -101,6 +101,8 @@ const UsersComponent = {
         try {
             Utils.showLoading();
             const data = await API.get(`/core/v1/admin/users/${userId}`);
+            console.log('User data received:', data); // Debug
+            console.log('email_confirmed_at:', data.user?.email_confirmed_at); // Debug
             this.selectedUser = data;
             this.renderUserDetailModal(data);
         } catch (error) {
@@ -119,6 +121,12 @@ const UsersComponent = {
         const subscription = data.subscription;
         const history = data.credits_history || [];
         const openrouterKeys = data.openrouter_keys || [];
+        
+        // Debug: log dello stato email
+        console.log('Rendering user detail for:', user.email);
+        console.log('email_confirmed_at:', user.email_confirmed_at);
+        console.log('confirmed_at:', user.confirmed_at);
+        console.log('Should show button?', !user.email_confirmed_at && !user.confirmed_at);
 
         const modal = document.createElement('div');
         modal.className = 'modal modal-open';
@@ -160,7 +168,7 @@ const UsersComponent = {
                                     <div><strong>ID:</strong> <code class="text-xs">${user.id}</code></div>
                                     <div>
                                         <strong>Email:</strong> ${Utils.escapeHtml(user.email || 'N/A')}
-                                        ${user.email_confirmed_at ? `
+                                        ${(user.email_confirmed_at || user.confirmed_at) ? `
                                             <span class="badge badge-success badge-sm ml-2">
                                                 <i class="fas fa-check-circle"></i> Confermata
                                             </span>
@@ -170,8 +178,8 @@ const UsersComponent = {
                                             </span>
                                         `}
                                     </div>
-                                    ${!user.email_confirmed_at ? `
-                                    <div>
+                                    ${!(user.email_confirmed_at || user.confirmed_at) ? `
+                                    <div class="mt-2">
                                         <button class="btn btn-sm btn-warning" onclick="UsersComponent.confirmUserEmail('${user.id}', '${Utils.escapeHtml(user.email || '')}')">
                                             <i class="fas fa-envelope-check"></i>
                                             Conferma Email
@@ -180,7 +188,7 @@ const UsersComponent = {
                                     ` : ''}
                                     <div><strong>Nome:</strong> ${Utils.escapeHtml(user.full_name || user.first_name || 'N/A')}</div>
                                     <div><strong>Registrato:</strong> ${user.created_at ? new Date(user.created_at).toLocaleString('it-IT') : 'N/A'}</div>
-                                    ${user.email_confirmed_at ? `<div><strong>Email confermata:</strong> ${new Date(user.email_confirmed_at).toLocaleString('it-IT')}</div>` : ''}
+                                    ${(user.email_confirmed_at || user.confirmed_at) ? `<div><strong>Email confermata:</strong> ${new Date(user.email_confirmed_at || user.confirmed_at).toLocaleString('it-IT')}</div>` : ''}
                                 </div>
                             </div>
                         </div>

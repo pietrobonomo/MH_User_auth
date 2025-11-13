@@ -181,8 +181,16 @@ async def admin_get_user(
         
         # Aggiungi dati autenticazione al profilo se disponibili
         if auth_user:
-            profile['email_confirmed_at'] = auth_user.get('email_confirmed_at')
-            profile['confirmed_at'] = auth_user.get('confirmed_at')  # Alias
+            # Supabase Admin API restituisce email_confirmed_at direttamente nell'oggetto user
+            profile['email_confirmed_at'] = auth_user.get('email_confirmed_at') or auth_user.get('confirmed_at')
+            profile['confirmed_at'] = auth_user.get('confirmed_at') or auth_user.get('email_confirmed_at')  # Alias
+            # Log per debug
+            logger.debug(f"User {user_id} - email_confirmed_at: {profile.get('email_confirmed_at')}")
+        else:
+            # Se non riusciamo a ottenere dati auth, imposta a None esplicitamente
+            profile['email_confirmed_at'] = None
+            profile['confirmed_at'] = None
+            logger.warning(f"Impossibile ottenere dati auth per user {user_id}, email_confirmed_at non disponibile")
 
         # Estrai dati OpenRouter dal profilo
         openrouter_keys = []
