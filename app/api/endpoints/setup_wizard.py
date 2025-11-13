@@ -268,7 +268,118 @@ async def create_user(
 
 @router.get("/wizard", response_class=HTMLResponse)
 async def setup_wizard() -> str:
-    """Setup Wizard per primo avvio sicuro."""
+    """Setup Wizard - Disabilitato su Railway (usa ENV vars)."""
+    
+    # Su Railway, il setup non è necessario - mostra istruzioni
+    if _is_running_on_railway():
+        return """
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <title>Flow Starter - Setup Instructions</title>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:800px;margin:40px auto;padding:0 20px;background:#f8fafc}
+      .card{background:#fff;border-radius:12px;padding:32px;box-shadow:0 2px 8px rgba(0,0,0,0.1);margin:20px 0}
+      h1{color:#1e293b;margin:0 0 12px;font-size:32px}
+      h2{color:#334155;margin:32px 0 16px;font-size:24px;border-bottom:2px solid #e2e8f0;padding-bottom:8px}
+      .subtitle{color:#64748b;margin:0 0 32px;font-size:18px}
+      pre{background:#1e293b;color:#e2e8f0;padding:16px;border-radius:8px;overflow:auto;font-size:13px;line-height:1.6}
+      code{background:#f1f5f9;color:#e11d48;padding:2px 6px;border-radius:4px;font-size:14px}
+      .success{background:#dcfce7;border-left:4px solid #22c55e;color:#166534;padding:16px;border-radius:8px;margin:16px 0}
+      .info{background:#dbeafe;border-left:4px solid #3b82f6;color:#1e40af;padding:16px;border-radius:8px;margin:16px 0}
+      ul{line-height:2;color:#475569}
+      li{margin:8px 0}
+      strong{color:#0f172a}
+      a{color:#3b82f6;text-decoration:none}
+      a:hover{text-decoration:underline}
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>✅ Setup Completato!</h1>
+      <p class="subtitle">FlowStarter è configurato e pronto all'uso su Railway</p>
+      
+      <div class="success">
+        <strong>🎉 Nessun setup manuale richiesto!</strong><br/>
+        FlowStarter usa le variabili d'ambiente Railway - tutto è già configurato automaticamente.
+      </div>
+
+      <h2>🔑 Come accedere alla Dashboard Admin</h2>
+      
+      <div class="info">
+        <strong>URL Dashboard:</strong> <a href="/core/v1/admin-ui/dashboard">/core/v1/admin-ui/dashboard</a>
+      </div>
+
+      <p>Dopo aver effettuato il login Basic Auth, devi configurare l'<strong>Admin Key</strong> nel browser:</p>
+
+      <ol>
+        <li>Accedi alla dashboard</li>
+        <li>Clicca <strong>"Quick Setup"</strong> nel banner giallo (se compare)</li>
+        <li>Seleziona <strong>"Admin Key"</strong></li>
+        <li>Incolla la tua <code>CORE_ADMIN_KEY</code> dalla configurazione Railway</li>
+        <li>Clicca <strong>"Save & Apply"</strong></li>
+      </ol>
+
+      <h2>💡 Admin Key - Come funziona</h2>
+      
+      <p><code>X-Admin-Key</code> è un header HTTP usato per:</p>
+      <ul>
+        <li><strong>Operazioni admin</strong> senza login utente (gestione utenti, pricing, config)</li>
+        <li><strong>Bypass autenticazione</strong> per automazione e script</li>
+        <li><strong>Impersonificazione</strong> per fare azioni per conto di altri utenti</li>
+        <li><strong>Dashboard admin</strong> per tutte le chiamate API</li>
+      </ul>
+
+      <h2>📋 Variabili Railway Richieste</h2>
+      
+      <p>FlowStarter richiede queste variabili d'ambiente su Railway:</p>
+
+      <pre><strong># Core</strong>
+CORE_ADMIN_KEY=&lt;secret-key&gt;
+CORE_ENCRYPTION_KEY=&lt;fernet-key&gt;
+CORE_APP_ID=marketinghackers
+
+<strong># Supabase (interno via Kong)</strong>
+SUPABASE_URL=http://kong.railway.internal:8000
+SUPABASE_SERVICE_KEY=&lt;service_role_jwt&gt;
+SUPABASE_ANON_KEY=&lt;anon_jwt&gt;
+SUPABASE_JWKS_URL=https://&lt;kong-domain&gt;/auth/v1/jwks
+
+<strong># LemonSqueezy</strong>
+LEMONSQUEEZY_API_KEY=&lt;api-key&gt;
+LEMONSQUEEZY_STORE_ID=&lt;store-id&gt;
+LEMONSQUEEZY_SIGNING_SECRET=&lt;webhook-secret&gt;
+BILLING_PROVIDER=lemonsqueezy
+
+<strong># Flowise (opzionale)</strong>
+FLOWISE_BASE_URL=&lt;flowise-url&gt;
+FLOWISE_API_KEY=&lt;api-key&gt;
+
+<strong># OpenRouter Provisioning</strong>
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+OPENROUTER_PROVISIONING_KEY=&lt;provisioning-key&gt;</pre>
+
+      <h2>🚀 Prossimi Passi</h2>
+      
+      <ul>
+        <li>✅ Configura Admin Key nella dashboard</li>
+        <li>✅ Testa connessione Supabase</li>
+        <li>✅ Crea utenti di test</li>
+        <li>✅ Configura piani billing</li>
+        <li>⚙️ Integra Flowise (opzionale)</li>
+      </ul>
+
+      <div class="info" style="margin-top:32px">
+        <strong>📚 Documentazione completa:</strong> <a href="https://github.com/pietrobonomo/flow_starter">GitHub Repository</a>
+      </div>
+    </div>
+  </body>
+</html>
+        """
+    
+    # Setup wizard originale per ambienti non-Railway
     return """
 <!doctype html>
 <html>

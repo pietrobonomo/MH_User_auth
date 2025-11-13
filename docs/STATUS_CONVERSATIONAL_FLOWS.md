@@ -178,3 +178,17 @@ Per procedere serve:
 **ALTA** - Feature quasi completa, manca solo il passaggio corretto sessionId a Flowise.
 
 **Tempo stimato fix:** 30-60 minuti una volta identificata la causa root.
+
+
+
+
+
+
+
+
+
+
+
+
+
+

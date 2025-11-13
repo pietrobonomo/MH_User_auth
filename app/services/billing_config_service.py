@@ -16,20 +16,46 @@ import httpx
 
 class BillingConfigService:
     async def get_config(self, app_id: Optional[str] = None) -> Dict[str, Any]:
+        """Ottiene configurazione billing, con fallback a ENV vars per Railway.
+        
+        Ordine:
+        1. Database (se disponibile)
+        2. ENV vars (fallback per Railway/deployment semplificati)
+        """
         supabase_url = os.environ.get("SUPABASE_URL")
         service_key = os.environ.get("SUPABASE_SERVICE_KEY")
         app = app_id or os.environ.get("CORE_APP_ID", "default")
-        if not supabase_url or not service_key:
-            return {"app_id": app, "config": {}}
-        url = f"{supabase_url}/rest/v1/billing_configs?app_id=eq.{app}&select=config"
-        headers = {"apikey": service_key, "Authorization": f"Bearer {service_key}", "Accept": "application/json"}
-        async with httpx.AsyncClient(timeout=10) as client:
-            r = await client.get(url, headers=headers)
-            if r.status_code != 200:
-                return {"app_id": app, "config": {}}
-            rows = r.json() or []
-            cfg = (rows[0].get("config") if rows else {}) or {}
-            return {"app_id": app, "config": cfg}
+        
+        # Prova dal database
+        if supabase_url and service_key:
+            try:
+                url = f"{supabase_url}/rest/v1/billing_configs?app_id=eq.{app}&select=config"
+                headers = {"apikey": service_key, "Authorization": f"Bearer {service_key}", "Accept": "application/json"}
+                async with httpx.AsyncClient(timeout=10) as client:
+                    r = await client.get(url, headers=headers)
+                    if r.status_code == 200:
+                        rows = r.json() or []
+                        if rows:
+                            cfg = rows[0].get("config") or {}
+                            return {"app_id": app, "config": cfg}
+            except Exception:
+                pass
+        
+        # Fallback ENV vars per Railway
+        provider = os.environ.get("BILLING_PROVIDER", "lemonsqueezy")
+        store_id = os.environ.get("LEMONSQUEEZY_STORE_ID")
+        
+        fallback_config = {
+            "provider": provider,
+            "lemonsqueezy": {
+                "store_id": store_id if store_id else "",
+                "test_mode": True,
+                "sandbox": True
+            },
+            "plans": []
+        }
+        
+        return {"app_id": app, "config": fallback_config}
 
     async def put_config(self, config: Dict[str, Any], app_id: Optional[str] = None) -> Dict[str, Any]:
         supabase_url = os.environ.get("SUPABASE_URL")

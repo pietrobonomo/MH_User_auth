@@ -262,17 +262,20 @@ async function loadOverviewMetrics() {
             console.error('Failed to load credits:', e);
         }
         
-        // Hide setup alert if configured
-        if (State.token || State.adminKey) {
-            const setupAlert = document.getElementById('setup-alert');
-            if (setupAlert && !document.querySelector('#metric-users').textContent.includes('N/A')) {
-                setupAlert.style.display = 'none';
+        // Hide admin key info if configured
+        if (State.adminKey) {
+            const adminKeyInfo = document.getElementById('admin-key-info');
+            if (adminKeyInfo) {
+                adminKeyInfo.style.display = 'none';
             }
         }
     } catch (error) {
         console.error('Failed to load metrics:', error);
-        const setupAlert = document.getElementById('setup-alert');
-        if (setupAlert) setupAlert.style.display = 'block';
+        // Show admin key info only if not configured
+        if (!State.adminKey) {
+            const adminKeyInfo = document.getElementById('admin-key-info');
+            if (adminKeyInfo) adminKeyInfo.style.display = 'block';
+        }
     }
 }
 
@@ -285,36 +288,30 @@ function showQuickSetup() {
     modal.id = 'quick-setup-modal';
     modal.innerHTML = `
         <div class="modal-box max-w-2xl">
-            <h3 class="font-bold text-lg mb-4">Quick Setup</h3>
+            <h3 class="font-bold text-lg mb-4">🔑 Configura Admin Key</h3>
+            <div class="alert alert-info mb-4">
+                <i class="fas fa-info-circle"></i>
+                <div>
+                    <p class="text-sm">L'Admin Key è salvata nelle variabili Railway (<code>CORE_ADMIN_KEY</code>).</p>
+                    <p class="text-sm mt-1">Inseriscila qui per autorizzare questo browser a usare la dashboard.</p>
+                </div>
+            </div>
             <div class="space-y-4">
                 <div class="form-control">
                     <label class="label">
-                        <span class="label-text">Authentication Method</span>
+                        <span class="label-text font-semibold">Admin Key</span>
+                        <span class="label-text-alt">Da Railway: CORE_ADMIN_KEY</span>
                     </label>
-                    <select class="select select-bordered" id="quick-auth-method" onchange="toggleAuthFields()">
-                        <option value="token">Bearer Token (JWT)</option>
-                        <option value="admin-key">Admin Key</option>
-                        <option value="both">Both</option>
-                    </select>
-                </div>
-                
-                <div class="form-control" id="quick-token-field">
+                    <input type="text" class="input input-bordered" id="quick-admin-key" 
+                           placeholder="aSes_PTlzVr2kAs98LOTLxHwUTVdw6rlR-SUc2SuOOM" />
                     <label class="label">
-                        <span class="label-text">Bearer Token</span>
+                        <span class="label-text-alt">Questa chiave sarà salvata nel localStorage del browser</span>
                     </label>
-                    <input type="text" class="input input-bordered" id="quick-token" placeholder="eyJhbGciOi..." />
-                </div>
-                
-                <div class="form-control" id="quick-admin-field" style="display: none;">
-                    <label class="label">
-                        <span class="label-text">Admin Key</span>
-                    </label>
-                    <input type="text" class="input input-bordered" id="quick-admin-key" placeholder="sk-..." />
                 </div>
                 
                 <div class="form-control">
                     <label class="label">
-                        <span class="label-text">Base URL</span>
+                        <span class="label-text">Base URL (opzionale)</span>
                     </label>
                     <input type="text" class="input input-bordered" id="quick-base-url" value="${State.baseUrl}" />
                 </div>
@@ -328,51 +325,26 @@ function showQuickSetup() {
     `;
     document.body.appendChild(modal);
     
-    // Pre-fill current values
-    document.getElementById('quick-token').value = State.token;
+    // Pre-fill current admin key
     document.getElementById('quick-admin-key').value = State.adminKey;
-    
-    // Show correct fields based on current auth
-    if (State.token && State.adminKey) {
-        document.getElementById('quick-auth-method').value = 'both';
-        toggleAuthFields();
-    } else if (State.adminKey) {
-        document.getElementById('quick-auth-method').value = 'admin-key';
-        toggleAuthFields();
-    }
-}
-
-window.toggleAuthFields = function() {
-    const method = document.getElementById('quick-auth-method').value;
-    document.getElementById('quick-token-field').style.display = 
-        (method === 'token' || method === 'both') ? 'block' : 'none';
-    document.getElementById('quick-admin-field').style.display = 
-        (method === 'admin-key' || method === 'both') ? 'block' : 'none';
 }
 
 window.saveQuickSetup = function() {
-    const method = document.getElementById('quick-auth-method').value;
+    // Semplificato: salva solo Admin Key per Railway
+    State.adminKey = document.getElementById('quick-admin-key').value.trim();
+    State.baseUrl = document.getElementById('quick-base-url').value.trim() || window.location.origin;
     
-    if (method === 'token' || method === 'both') {
-        State.token = document.getElementById('quick-token').value.trim();
-    } else {
-        State.token = '';
+    if (!State.adminKey) {
+        alert('⚠️ Inserisci l\'Admin Key dalla configurazione Railway (CORE_ADMIN_KEY)');
+        return;
     }
     
-    if (method === 'admin-key' || method === 'both') {
-        State.adminKey = document.getElementById('quick-admin-key').value.trim();
-    } else {
-        State.adminKey = '';
-    }
-    
-    State.baseUrl = document.getElementById('quick-base-url').value.trim();
     State.save();
-    
     document.getElementById('quick-setup-modal').remove();
-    Utils.showToast('Configuration saved!', 'success');
+    Utils.showToast('✅ Admin Key configurata! Ricarico la dashboard...', 'success');
     
-    // Reload current page to apply new credentials
-    loadPage(State.currentPage);
+    // Ricarica la pagina per applicare le nuove credenziali
+    setTimeout(() => window.location.reload(), 1000);
 }
 
 /**

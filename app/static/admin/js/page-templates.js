@@ -5,17 +5,16 @@ window.pageTemplates = {
                     <p class="text-base-content/60">System status and key metrics</p>
                 </div>
                 
-                                    <!-- Quick Setup -->
-                    <div class="alert alert-warning mb-6" id="setup-alert" style="display: none;">
-                        <i class="fas fa-exclamation-triangle"></i>
+                                    <!-- Admin Key Info -->
+                    <div class="alert alert-info mb-6" id="admin-key-info" style="display: none;">
+                        <i class="fas fa-info-circle"></i>
                         <div>
-                            <h3 class="font-bold">Setup Required</h3>
-                            <p>Configure your Supabase credentials and admin key to load data</p>
-                            <p class="text-sm mt-1">You need to run the setup wizard or configure credentials below</p>
+                            <h3 class="font-bold">Configura Admin Key</h3>
+                            <p>Per usare la dashboard, configura la tua Admin Key nel browser</p>
+                            <p class="text-sm mt-1">L'Admin Key è salvata in localStorage e serve per autenticare le chiamate API</p>
                         </div>
                         <div class="flex gap-2">
-                            <button class="btn btn-sm btn-primary" onclick="showQuickSetup()">Quick Setup</button>
-                            <a href="/core/v1/setup/wizard" class="btn btn-sm btn-secondary" target="_blank">Setup Wizard</a>
+                            <button class="btn btn-sm btn-primary" onclick="showQuickSetup()">Configura Admin Key</button>
                         </div>
                     </div>
                 
