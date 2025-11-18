@@ -32,6 +32,11 @@ def _is_running_on_railway() -> bool:
 
 def _require_basic_auth(credentials: HTTPBasicCredentials = Depends(security)) -> None:
     _ui_enabled()
+    
+    # Skip auth if ADMIN_UI_NO_AUTH is set (for debugging)
+    if os.environ.get("ADMIN_UI_NO_AUTH", "0").lower() in ("1", "true", "yes"):
+        return
+    
     username = os.environ.get("ADMIN_UI_USER")
     password = os.environ.get("ADMIN_UI_PASSWORD")
     if not (username and password):
